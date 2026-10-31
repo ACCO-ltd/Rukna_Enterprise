@@ -223,7 +223,7 @@ describe('FinanceProjectsList export', () => {
       'Client',
       'Currency',
       'Contract',
-      'Billed (excl. tax)',
+      'Billed',
       'Collected',
       'Outstanding',
       'Overdue',
