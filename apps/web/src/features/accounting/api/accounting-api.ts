@@ -37,7 +37,6 @@ import type {
   ReconciliationReport,
   ReverseJournalPayload,
   JournalBookEntry,
-  RunReconciliationPayload,
   TrialBalance,
   UpdateInvoiceDocumentSettingsBody,
   UpdateBankAccountBody,
@@ -145,24 +144,10 @@ export function runOpeningBalance(payload: OpeningBalanceBody): Promise<Migratio
   });
 }
 
-/**
- * `POST /accounting/reconcile`
- *
- * Compares the AR and AP control accounts against their subledgers, plus any bank accounts
- * named. A variance over 0.01 marks a check unreconciled and blocks period close.
- *
- * A POST that reads and returns a report rather than changing anything — so it is exposed as
- * an explicit action the user runs, not a query that refetches on its own.
- */
-export function runReconciliation(
-  payload: RunReconciliationPayload,
-): Promise<ReconciliationReport> {
-  return apiClient<ReconciliationReport>('/accounting/reconcile', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
+export function getReconciliation(): Promise<ReconciliationReport> {
+  return apiClient<ReconciliationReport>('/accounting/reconcile');
 }
+
 
 /**
  * `GET /bank-accounts`.

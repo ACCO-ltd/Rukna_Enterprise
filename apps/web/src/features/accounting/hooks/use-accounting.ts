@@ -21,7 +21,7 @@ import {
   reopenPeriod,
   unlockPeriod,
   runOpeningBalance,
-  runReconciliation,
+  getReconciliation,
   updateAccount,
   createJournal,
   getFiscalYear,
@@ -88,7 +88,6 @@ import type {
   BalanceSheet,
   CloseGate,
   MonthlyPL,
-  RunReconciliationPayload,
   ApproveJournalPayload,
   CreateFiscalYearPayload,
   CreateJournalPayload,
@@ -105,6 +104,7 @@ import type {
   UpdateInvoiceNumberingBody,
   UpdateInvoiceDocumentSettingsBody,
   UpdateBankAccountBody,
+  ReconciliationReport,
 } from '../types';
 import { ApiError } from '@/lib/api-client';
 import type { MutationFeedbackMeta } from '@/lib/mutation-feedback';
@@ -377,14 +377,9 @@ export function useRunOpeningBalance() {
   });
 }
 
-/**
- * Reconciliation reads and returns a report without changing anything, so nothing is
- * invalidated — it is a mutation only because the endpoint is a POST.
- */
-export function useRunReconciliation() {
-  return useMutation({
-    mutationFn: (payload: RunReconciliationPayload) => runReconciliation(payload),
-  });
+/** GL-L — the AR/AP tie-out, read on arrival; it changes nothing. */
+export function useReconciliation(): UseQueryResult<ReconciliationReport, Error> {
+  return useQuery({ queryKey: [...accountingKeys.all, 'tie-out'], queryFn: getReconciliation });
 }
 
 export function useSignatories(

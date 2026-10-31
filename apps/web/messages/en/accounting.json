@@ -76,7 +76,7 @@
       }
     },
     "create": {
-      "new": "New Account",
+      "new": "New account",
       "title": "New GL account",
       "subtitle": "Name it, place it in the chart, and choose when it takes effect.",
       "sections": {
@@ -487,42 +487,6 @@
       "twoToRelease": "Two of them must sign to release a payment."
     }
   },
-  "reconciliation": {
-    "title": "Control Account Reconciliation",
-    "subtitle": "Compare AR, AP, and bank GL balances against their subledgers. A variance above 0.01 blocks period close.",
-    "detectedHeading": "Detected control accounts",
-    "arAccount": "AR control account",
-    "apAccount": "AP control account",
-    "bankAccountsLabel": "Reconcilable bank accounts",
-    "noBankAccounts": "No reconcilable bank accounts are configured.",
-    "periodLabel": "Scope to period",
-    "periodAll": "All periods",
-    "runButton": "Run reconciliation",
-    "running": "Running…",
-    "runFailed": "Reconciliation failed.",
-    "noArAccount": "No accounts receivable control account found in the chart. Add an account with the ACCOUNTS_RECEIVABLE subtype first.",
-    "noApAccount": "No accounts payable control account found in the chart. Add an account with the ACCOUNTS_PAYABLE subtype first.",
-    "loadFailed": "Could not load accounts.",
-    "resultHeading": "Result",
-    "generatedAt": "Generated {timestamp}",
-    "allReconciled": "All control accounts reconcile",
-    "allReconciledBody": "Every control account agrees with its subledger.",
-    "hasVariance": "Variance detected",
-    "hasVarianceBody": "At least one control account does not agree with its subledger.",
-    "blocksClose": "This variance will block period close.",
-    "colAccount": "Account",
-    "colType": "Type",
-    "colGl": "GL balance",
-    "colSubledger": "Subledger",
-    "colVariance": "Variance",
-    "colStatus": "Status",
-    "statusOk": "Reconciled",
-    "statusVariance": "Variance",
-    "typeAr": "Accounts receivable",
-    "typeAp": "Accounts payable",
-    "typeBank": "Bank",
-    "openLedger": "Open the ledger for {account}"
-  },
   "journals": {
     "title": "Journals",
     "subtitle": "Manual general-ledger entries.",
@@ -797,15 +761,13 @@
     "csvComparative": "Comparative"
   },
   "ledger": {
-    "title": "Account Ledger",
+    "title": "Account ledger",
     "subtitle": "Every posted entry against one account, with a running balance.",
     "loadFailed": "Could not load the ledger.",
     "accountLabel": "Account",
     "selectAccount": "— Select an account —",
-    "noAccountChosen": "Choose an account to see its ledger.",
-    "noAccountChosenHint": "Only accounts that accept postings carry ledger entries.",
-    "empty": "Nothing was posted against this account in this range.",
-    "emptyHint": "Widen the dates, or check that the entries you expect were posted rather than left in draft.",
+    "noAccountChosen": "Choose an account",
+    "empty": "Nothing posted to this account in the period.",
     "openingBalance": "Opening balance",
     "closingBalance": "Closing balance",
     "periodDebit": "Debits",
@@ -816,16 +778,17 @@
     "colDebit": "Debit",
     "colCredit": "Credit",
     "colBalance": "Balance",
-    "postedOnlyNote": "Posted entries only. A draft or approved journal does not appear here until it is posted.",
     "openJournal": "Open journal {journal}",
-    "drillHint": "Select any line to open the journal that posted it.",
     "csvJournal": "Journal",
     "csvDate": "Date",
     "csvDescription": "Description",
     "csvReference": "Reference",
     "csvDebit": "Debit",
     "csvCredit": "Credit",
-    "csvBalance": "Running balance"
+    "csvBalance": "Running balance",
+    "periodLabel": "Period",
+    "dr": "Dr",
+    "cr": "Cr"
   },
   "monthlyPL": {
     "title": "Monthly Comparison",
@@ -2164,6 +2127,32 @@
       "OPENING_BALANCE": "Opening balance",
       "YEAR_END_CLOSE": "Year-end close",
       "OTHER": "Other"
+    }
+  },
+  "tieOut": {
+    "title": "AR/AP tie-out",
+    "checkedAt": "Checked {time}",
+    "refresh": "Check again",
+    "loadFailed": "Could not run the check.",
+    "noControls": "No receivable or payable control account in the chart.",
+    "differsTitle": "The books and the documents disagree",
+    "differsBody": "Something posted to a control account without an invoice or bill, or a document changed without posting. The month cannot close until they agree.",
+    "kind": {
+      "AR": "Receivables",
+      "AP": "Payables"
+    },
+    "agrees": "Agrees",
+    "differs": "Off by {amount}",
+    "books": "In the books",
+    "difference": "Difference",
+    "documents": {
+      "AR": "{count, plural, one {# open invoice} other {# open invoices}}",
+      "AP": "{count, plural, one {# open bill} other {# open bills}}"
+    },
+    "openLedger": "Open ledger",
+    "openAging": {
+      "AR": "Receivables aging",
+      "AP": "Payables aging"
     }
   }
 }
