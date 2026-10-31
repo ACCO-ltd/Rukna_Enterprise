@@ -1,266 +1,170 @@
 'use client';
 
-import { useId, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Fragment, useId, useState } from 'react';
+import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
-import {
-  Alert,
-  CheckboxField,
-  DatePicker,
-  FilterBar,
-  FilterField,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableScroll,
-} from '@erp/ui';
+import { Alert, CheckboxField, DatePicker, EmptyState, FilterBar, FilterField, SkeletonTable, cn } from '@erp/ui';
 
-import { formatDate, formatMoney } from '@/lib/format';
+import { ListPageHeader } from '@/components/layout/list-page-header';
+import { LoadError } from '@/components/load-error';
+import { formatMoney } from '@/lib/format';
 
+import { CLASS_ORDER } from '../coa-tree';
 import { useTrialBalance } from '../hooks/use-accounting';
+import { todayWireDate } from '../invoice-overdue';
 import { exportCsv, reportFilename } from '../lib/export-csv';
 import { ledgerHref } from '../lib/report-links';
+import { AS_OF_PRESETS, asOfDate, type AsOfPreset } from '../statement';
 import type { TrialBalanceLine } from '../types';
 import { ReportActions } from './report-actions';
-import { LoadError } from '@/components/load-error';
+import { PresetButtons } from './statement-table';
 
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
+/**
+ * R — every account's balance at a date, debits and credits, grouped by class. The opening balance
+ * and the period's movement (the period being the accounting month holding the date) can be shown
+ * alongside. Each account opens its ledger up to the date.
+ */
 export function TrialBalanceReport() {
   const t = useTranslations('accounting.trialBalance');
+  const tAsOf = useTranslations('accounting.reportPeriod.asOf');
+  const tClass = useTranslations('accounting.chartOfAccounts.classSection');
   const tCommon = useTranslations('accounting.common');
-  const tShared = useTranslations('common');
-  const locale = useLocale() as 'en' | 'ar';
-  const router = useRouter();
+  const tPreset = useTranslations('accounting.reportPeriod');
+  const locale = useLocale() as 'en';
+  const zeroId = useId();
+  const detailId = useId();
 
-  const [asOfDate, setAsOfDate] = useState(today);
+  const today = todayWireDate();
+  const [preset, setPreset] = useState<AsOfPreset | null>('today');
+  const [custom, setCustom] = useState(today);
+  const asOf = preset ? asOfDate(preset, today) : custom;
   const [includeZero, setIncludeZero] = useState(false);
-  const includeZeroId = useId();
+  const [detail, setDetail] = useState(false);
 
-  const report = useTrialBalance(asOfDate, includeZero);
+  const report = useTrialBalance(asOf, includeZero);
+  const usd = (v: string) => (Number(v) === 0 ? '' : (formatMoney(v, 'USD', locale) ?? v));
+  const money = (v: string) => formatMoney(v, 'USD', locale) ?? v;
+
+  // Without the movement columns, an account that nets to zero shows nothing; it stays only when asked for.
+  const shown = (report.data?.lines ?? []).filter((l) => detail || includeZero || Number(l.closingDebit) !== 0 || Number(l.closingCredit) !== 0);
+  const groups = CLASS_ORDER.map((c) => ({ c, lines: shown.filter((l) => l.accountClass === c) })).filter((g) => g.lines.length > 0);
+  const other = shown.filter((l) => !CLASS_ORDER.includes(l.accountClass as never));
+  if (other.length) groups.push({ c: 'ASSET', lines: other });
+
+  const cols = detail
+    ? (['openingDebit', 'openingCredit', 'periodDebit', 'periodCredit', 'closingDebit', 'closingCredit'] as const)
+    : (['closingDebit', 'closingCredit'] as const);
+  const colLabel: Record<(typeof cols)[number], string> = {
+    openingDebit: t('colOpeningDebit'), openingCredit: t('colOpeningCredit'),
+    periodDebit: t('colPeriodDebit'), periodCredit: t('colPeriodCredit'),
+    closingDebit: detail ? t('colClosingDebit') : t('colDebit'), closingCredit: detail ? t('colClosingCredit') : t('colCredit'),
+  };
+  const totalKey = {
+    openingDebit: 'totalOpeningDebit', openingCredit: 'totalOpeningCredit', periodDebit: 'totalPeriodDebit',
+    periodCredit: 'totalPeriodCredit', closingDebit: 'totalClosingDebit', closingCredit: 'totalClosingCredit',
+  } as const;
 
   const handleExport = () => {
     if (!report.data) return;
-    const rows = report.data.lines.map((line) => [
-      line.accountCode,
-      line.accountName,
-      line.openingDebit,
-      line.openingCredit,
-      line.periodDebit,
-      line.periodCredit,
-      line.closingDebit,
-      line.closingCredit,
-    ]);
     exportCsv(
-      reportFilename('trial-balance', asOfDate),
-      [
-        t('csvCode'),
-        t('csvName'),
-        t('colOpeningDebit'),
-        t('colOpeningCredit'),
-        t('colPeriodDebit'),
-        t('colPeriodCredit'),
-        t('colClosingDebit'),
-        t('colClosingCredit'),
-      ],
-      rows,
+      reportFilename('trial-balance', asOf),
+      [t('csvCode'), t('csvName'), t('colOpeningDebit'), t('colOpeningCredit'), t('colPeriodDebit'), t('colPeriodCredit'), t('colClosingDebit'), t('colClosingCredit')],
+      report.data.lines.map((l) => [l.accountCode, l.accountName, l.openingDebit, l.openingCredit, l.periodDebit, l.periodCredit, l.closingDebit, l.closingCredit]),
     );
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <FilterBar>
-          <FilterField id="tb-date" label={tCommon('asOfDate')}>
+    <div className="space-y-5">
+      <ListPageHeader title={t('title')} actions={<ReportActions onExport={handleExport} exportDisabled={!report.data?.lines.length} />} />
+
+      <FilterBar>
+        <FilterField id="tb-date" label={tCommon('asOfDate')}>
+          <div className="flex flex-wrap items-center gap-2">
+            <PresetButtons label={tPreset('presets')} options={AS_OF_PRESETS} value={preset} onChange={setPreset} labelFor={(p) => tAsOf(p)} />
             <DatePicker
               id="tb-date"
-              value={asOfDate}
-              onChange={(value) => setAsOfDate(value)}
+              value={asOf}
+              onChange={(value) => {
+                setCustom(value);
+                setPreset(null);
+              }}
             />
-          </FilterField>
-
-          <CheckboxField
-            id={includeZeroId}
-            label={t('includeZero')}
-            checked={includeZero}
-            onChange={(e) => setIncludeZero(e.target.checked)}
-          />
-        </FilterBar>
-
-        <ReportActions onExport={handleExport} exportDisabled={!report.data?.lines.length} />
-      </div>
-
-      {report.isPending ? (
-        <div role="status" aria-live="polite">
-          <span className="sr-only">{tShared('loading')}</span>
-          <div
-            className="h-64 animate-pulse rounded-panel border border-border bg-muted"
-            aria-hidden="true"
-          />
+          </div>
+        </FilterField>
+        <div className="flex flex-wrap items-center gap-4 self-end pb-2">
+          <CheckboxField id={detailId} label={t('showMovement')} checked={detail} onChange={(e) => setDetail(e.target.checked)} />
+          <CheckboxField id={zeroId} label={t('includeZero')} checked={includeZero} onChange={(e) => setIncludeZero(e.target.checked)} />
         </div>
-      ) : report.isError ? (
+      </FilterBar>
+
+      {report.isError ? (
         <LoadError message={t('loadFailed')} onRetry={() => void report.refetch()} />
+      ) : report.isPending ? (
+        <SkeletonTable rows={8} columns={3} label={t('title')} />
+      ) : report.data.lines.length === 0 ? (
+        <EmptyState title={t('empty')} />
       ) : (
         <>
-          {/* A trial balance that does not balance means the ledger holds an entry that
-              should not exist. It is stated first, in error tone, because everything below
-              it is unreliable until it is explained. */}
           {report.data.balanced ? null : (
             <Alert
               variant="error"
-              messages={[
-                t('notBalancedHint', {
-                  debit:
-                    formatMoney(report.data.totalClosingDebit, undefined, locale) ??
-                    report.data.totalClosingDebit,
-                  credit:
-                    formatMoney(report.data.totalClosingCredit, undefined, locale) ??
-                    report.data.totalClosingCredit,
-                }),
-              ]}
+              messages={[t('notBalancedHint', { debit: money(report.data.totalClosingDebit), credit: money(report.data.totalClosingCredit) })]}
             />
           )}
-
-          <p className="text-xs text-muted-foreground">
-            {tCommon('generatedAt', {
-              timestamp: formatDate(report.data.generatedAt, locale) ?? report.data.generatedAt,
-            })}
-            {' · '}
-            {t('snapshotNote')}
-            {report.data.lines.length > 0 ? ` · ${t('drillHint')}` : ''}
-          </p>
-
-          {report.data.lines.length === 0 ? (
-            <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-12 text-center">
-              <p className="text-sm font-medium text-foreground">{t('empty')}</p>
-              <p className="mx-auto mt-1 max-w-prose text-sm text-muted-foreground">
-                {t('emptyHint')}
-              </p>
-            </div>
-          ) : (
-            <TableScroll aria-label={t('title')}>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="min-w-50">{t('colAccount')}</TableHead>
-                    <TableHead numeric>{t('colOpeningDebit')}</TableHead>
-                    <TableHead numeric>{t('colOpeningCredit')}</TableHead>
-                    <TableHead numeric>{t('colPeriodDebit')}</TableHead>
-                    <TableHead numeric>{t('colPeriodCredit')}</TableHead>
-                    <TableHead numeric>{t('colClosingDebit')}</TableHead>
-                    <TableHead numeric>{t('colClosingCredit')}</TableHead>
-                  </TableRow>
-                </TableHeader>
-
-                <TableBody>
-                  {report.data.lines.map((line) => (
-                    <TrialBalanceRow
-                      key={line.accountId}
-                      line={line}
-                      locale={locale}
-                      asOfDate={asOfDate}
-                      onOpen={(href) => router.push(href)}
-                      openLabel={t('openLedger', { account: line.accountName })}
-                    />
-                  ))}
-
-                  <TableRow>
-                    <TableCell className="min-w-50">
-                      <span className="text-sm font-semibold text-foreground">{t('totals')}</span>
-                    </TableCell>
-                    {[
-                      report.data.totalOpeningDebit,
-                      report.data.totalOpeningCredit,
-                      report.data.totalPeriodDebit,
-                      report.data.totalPeriodCredit,
-                      report.data.totalClosingDebit,
-                      report.data.totalClosingCredit,
-                    ].map((total, i) => (
-                      <TableCell key={i} numeric>
-                        <bdi className="text-sm font-semibold tabular-nums">
-                          {formatMoney(total, undefined, locale)}
-                        </bdi>
-                      </TableCell>
+          <div className="min-w-0 overflow-hidden rounded-panel border border-border bg-surface">
+            <div className="overflow-x-auto">
+              <table className={cn('w-full text-body-sm', detail && 'min-w-[960px]')}>
+                <caption className="sr-only">{t('title')}</caption>
+                <thead>
+                  <tr className="border-b border-border bg-surface-subtle text-caption text-muted-foreground">
+                    <th scope="col" className="sticky start-0 bg-surface-subtle px-4 py-2 text-start font-medium">{t('colAccount')}</th>
+                    {cols.map((c) => (
+                      <th key={c} scope="col" className="whitespace-nowrap px-3 py-2 text-end font-medium last:pe-4">{colLabel[c]}</th>
                     ))}
-                  </TableRow>
-                </TableBody>
-              </Table>
-            </TableScroll>
-          )}
-
-          <p
-            className={
-              report.data.balanced
-                ? 'text-sm font-medium text-brand-primary'
-                : 'text-sm font-medium text-danger'
-            }
-            aria-live="polite"
-          >
-            {report.data.balanced ? t('balanced') : t('notBalanced')}
-          </p>
+                  </tr>
+                </thead>
+                <tbody>
+                  {groups.map((g) => (
+                    <Fragment key={g.c}>
+                      <tr className="border-b border-border">
+                        <th scope="rowgroup" colSpan={cols.length + 1} className="px-4 pb-1 pt-4 text-start text-caption font-semibold uppercase tracking-wide text-muted-foreground">
+                          {tClass(g.c)}
+                        </th>
+                      </tr>
+                      {g.lines.map((line: TrialBalanceLine) => (
+                        <tr key={line.accountId} className="border-b border-border/60 hover:bg-surface-subtle">
+                          <th scope="row" className="sticky start-0 bg-surface px-4 py-2 text-start font-normal">
+                            <Link href={ledgerHref(line.accountId, { to: asOf })} className="hover:text-brand-primary hover:underline" aria-label={t('openLedger', { account: line.accountName })}>
+                              <span className="me-2 font-mono text-caption text-muted-foreground">{line.accountCode}</span>
+                              {line.accountName}
+                            </Link>
+                          </th>
+                          {cols.map((c) => (
+                            <td key={c} className="whitespace-nowrap px-3 py-2 text-end tabular-nums last:pe-4">{usd(line[c])}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </Fragment>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-surface-subtle font-semibold">
+                    <th scope="row" className="sticky start-0 bg-surface-subtle px-4 py-2.5 text-start">
+                      {t('totals')}
+                      <span className={cn('ms-2 text-caption font-medium', report.data.balanced ? 'text-success' : 'text-danger')}>
+                        {report.data.balanced ? t('balanced') : t('notBalanced')}
+                      </span>
+                    </th>
+                    {cols.map((c) => (
+                      <td key={c} className="whitespace-nowrap px-3 py-2.5 text-end tabular-nums last:pe-4">{money(report.data[totalKey[c]])}</td>
+                    ))}
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
         </>
       )}
     </div>
-  );
-}
-
-function TrialBalanceRow({
-  line,
-  locale,
-  asOfDate,
-  onOpen,
-  openLabel,
-}: {
-  line: TrialBalanceLine;
-  locale: 'en' | 'ar';
-  asOfDate: string;
-  onOpen: (href: string) => void;
-  openLabel: string;
-}) {
-  // A trial-balance figure is cumulative to the as-of date, so its ledger runs from inception
-  // up to that date — `to = asOfDate`, `from` far enough back to include everything.
-  const href = ledgerHref(line.accountId, { to: asOfDate });
-
-  return (
-    <TableRow className="cursor-pointer hover:bg-surface-subtle" onClick={() => onOpen(href)}>
-      <TableCell className="min-w-50">
-        {/* The row's one real link — keyboard, screen reader and open-in-new-tab use it; the
-            row click mirrors it for the rest of the width. */}
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            onOpen(href);
-          }}
-          className="rounded-control text-start focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
-          aria-label={openLabel}
-        >
-          <span className="font-mono text-xs text-brand-primary tabular-nums">
-            {line.accountCode}
-          </span>
-          <span className="ms-2 text-sm text-brand-primary underline-offset-2 hover:underline">
-            {line.accountName}
-          </span>
-        </button>
-      </TableCell>
-
-      {[
-        line.openingDebit,
-        line.openingCredit,
-        line.periodDebit,
-        line.periodCredit,
-        line.closingDebit,
-        line.closingCredit,
-      ].map((amount, i) => (
-        <TableCell key={i} numeric>
-          <bdi className="tabular-nums">{formatMoney(amount, undefined, locale)}</bdi>
-        </TableCell>
-      ))}
-    </TableRow>
   );
 }

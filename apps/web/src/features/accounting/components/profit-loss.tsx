@@ -1,163 +1,117 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useMemo, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  DateRangePicker,
-  FilterBar,
-  FilterField,
-} from '@erp/ui';
+import { Card, CardHeader, CardTitle, DateRangePicker, EmptyState, FilterBar, FilterField, SkeletonTable } from '@erp/ui';
 
+import { ListPageHeader } from '@/components/layout/list-page-header';
+import { LoadError } from '@/components/load-error';
 import { formatDate, formatMoney } from '@/lib/format';
 import { MONEY_SCALE, toMinorUnits } from '@/lib/money';
 
-import { useProfitLoss } from '../hooks/use-accounting';
+import { useAccounts, useProfitLoss } from '../hooks/use-accounting';
+import { todayWireDate } from '../invoice-overdue';
 import { exportCsv, reportFilename } from '../lib/export-csv';
 import { ledgerHref, rangeFromParams } from '../lib/report-links';
+import { REPORT_RANGES, figuresOf, reportRange, statementSections, type ReportRange } from '../statement';
 import type { ProfitLoss, ProfitLossSection } from '../types';
 import { ReportActions } from './report-actions';
-import { LoadError } from '@/components/load-error';
+import { PresetButtons, StatementTable, type StatementBlock } from './statement-table';
 
-/** First and last day of the current month — the range a P&L is asked for most often. */
-function currentMonth(): { from: string; to: string } {
-  const now = new Date();
-  const first = new Date(now.getFullYear(), now.getMonth(), 1);
-  const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-
-  return { from: first.toISOString().slice(0, 10), to: last.toISOString().slice(0, 10) };
-}
-
+/**
+ * R — the profit and loss for a period as one statement: income, cost of sales, gross profit,
+ * expenses, net income, sub-accounts under their heading. Year-end closing entries are left out
+ * server-side. Each account opens its ledger for the same dates.
+ */
 export function ProfitLossReport() {
   const t = useTranslations('accounting.profitLoss');
+  const tRange = useTranslations('accounting.reportPeriod.range');
+  const tClass = useTranslations('accounting.chartOfAccounts.classSection');
   const tCommon = useTranslations('accounting.common');
-  const tShared = useTranslations('common');
-  const locale = useLocale() as 'en' | 'ar';
+  const tPreset = useTranslations('accounting.reportPeriod');
+  const locale = useLocale() as 'en';
   const router = useRouter();
-  // Opened from the monthly comparison (or a shared link) with ?from=&to=, it shows that range.
+  const pathname = usePathname() ?? '/finance/accounting/profit-loss';
   const searchParams = useSearchParams();
 
-  const [range, setRange] = useState(() => rangeFromParams(searchParams) ?? currentMonth());
+  const fromUrl = rangeFromParams(searchParams);
+  const [preset, setPreset] = useState<ReportRange | null>(() =>
+    fromUrl ? (REPORT_RANGES.find((r) => { const x = reportRange(r, todayWireDate()); return x.from === fromUrl.from && x.to === fromUrl.to; }) ?? null) : 'month',
+  );
+  const [custom, setCustom] = useState(() => fromUrl ?? reportRange('month', todayWireDate()));
+  const range = preset ? reportRange(preset, todayWireDate()) : custom;
 
   const report = useProfitLoss(range.from, range.to);
+  const accounts = useAccounts();
 
-  const netMinor = toMinorUnits(report.data?.netIncome, MONEY_SCALE);
-  const revenueMinor = toMinorUnits(report.data?.revenue.total, MONEY_SCALE);
-  const grossMinor = toMinorUnits(report.data?.grossProfit, MONEY_SCALE);
-
-  const hasLines =
-    (report.data?.revenue.lines.length ?? 0) +
-      (report.data?.costOfSales.lines.length ?? 0) +
-      (report.data?.expenses.lines.length ?? 0) >
-    0;
-
-  // A drill-down opens the account's ledger for exactly the P&L's own range.
-  const drill = (accountId: string) => router.push(ledgerHref(accountId, range));
-
-  const handleExport = () => {
-    if (!report.data) return;
-    exportProfitLoss(report.data, range, t);
+  const choose = (next: { from: string; to: string }, p: ReportRange | null) => {
+    setPreset(p);
+    setCustom(next);
+    router.replace(`${pathname}?${new URLSearchParams(next).toString()}`);
   };
 
+  const blocks = useMemo<StatementBlock[]>(() => {
+    if (!report.data) return [];
+    const d = report.data;
+    const [income, cos, expense] = statementSections(
+      accounts.data ?? [],
+      [figuresOf([...d.revenue.lines, ...d.costOfSales.lines, ...d.expenses.lines])],
+      ['INCOME', 'COST_OF_SALES', 'EXPENSE'],
+      new Map([...d.revenue.lines, ...d.costOfSales.lines, ...d.expenses.lines].map((l) => [l.accountId, { accountClass: l.accountClass, code: l.accountCode, name: l.accountName }])),
+    );
+    const minor = (v: string) => toMinorUnits(v, MONEY_SCALE);
+    const revenue = minor(d.revenue.total);
+    const gross = minor(d.grossProfit);
+    const net = minor(d.netIncome);
+    const hrefFor = (id: string) => ledgerHref(id, range);
+    const out: StatementBlock[] = [
+      { kind: 'section', key: 'income', label: tClass('INCOME'), lines: income!.lines, totals: [revenue], totalLabel: t('totalIncome'), hrefFor },
+    ];
+    if (cos!.lines.length > 0) {
+      out.push({ kind: 'section', key: 'cos', label: tClass('COST_OF_SALES'), lines: cos!.lines, totals: [minor(d.costOfSales.total)], totalLabel: t('totalCostOfSales'), hrefFor });
+      out.push({
+        kind: 'summary', key: 'gross', label: t('grossProfit'), amounts: [gross],
+        note: revenue > 0 ? t('grossMarginLabel', { percent: ((gross / revenue) * 100).toFixed(1) }) : undefined,
+      });
+    }
+    out.push({ kind: 'section', key: 'expense', label: tClass('EXPENSE'), lines: expense!.lines, totals: [minor(d.expenses.total)], totalLabel: t('totalExpenses'), hrefFor });
+    out.push({ kind: 'summary', key: 'net', label: net < 0 ? t('netLoss') : t('netIncome'), amounts: [net], strong: true });
+    return out;
+  }, [report.data, accounts.data, range, t, tClass]);
+
+  const hasLines = (report.data?.revenue.lines.length ?? 0) + (report.data?.costOfSales.lines.length ?? 0) + (report.data?.expenses.lines.length ?? 0) > 0;
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <FilterBar>
-          <FilterField id="pl-range" label={tCommon('dateRange')}>
-            <DateRangePicker
-              id="pl-range"
-              fromValue={range.from}
-              toValue={range.to}
-              onChange={(next) => setRange(next)}
+    <div className="space-y-5">
+      <ListPageHeader
+        title={t('title')}
+        actions={<ReportActions onExport={() => report.data && exportProfitLoss(report.data, range, t)} exportDisabled={!hasLines} />}
+      />
+
+      <FilterBar>
+        <FilterField id="pl-range" label={tCommon('dateRange')}>
+          <div className="flex flex-wrap items-center gap-2">
+            <PresetButtons
+              label={tPreset('presets')}
+              options={REPORT_RANGES}
+              value={preset}
+              onChange={(p) => choose(reportRange(p, todayWireDate()), p)}
+              labelFor={(p) => tRange(p)}
             />
-          </FilterField>
-        </FilterBar>
+            <DateRangePicker id="pl-range" fromValue={range.from} toValue={range.to} onChange={(next) => choose(next, null)} />
+          </div>
+        </FilterField>
+      </FilterBar>
 
-        <ReportActions onExport={handleExport} exportDisabled={!hasLines} />
-      </div>
-
-      {report.isPending ? (
-        <div role="status" aria-live="polite">
-          <span className="sr-only">{tShared('loading')}</span>
-          <div
-            className="h-64 animate-pulse rounded-panel border border-border bg-muted"
-            aria-hidden="true"
-          />
-        </div>
-      ) : report.isError ? (
+      {report.isError ? (
         <LoadError message={t('loadFailed')} onRetry={() => void report.refetch()} />
+      ) : report.isPending || accounts.isPending ? (
+        <SkeletonTable rows={8} columns={2} label={t('title')} />
+      ) : !hasLines ? (
+        <EmptyState title={t('empty')} />
       ) : (
-        <>
-          <p className="text-xs text-muted-foreground">
-            {tCommon('generatedAt', {
-              timestamp: formatDate(report.data.generatedAt, locale) ?? report.data.generatedAt,
-            })}
-            {' · '}
-            {t('closingExcludedNote')}
-            {hasLines ? ` · ${t('drillHint')}` : ''}
-          </p>
-
-          {/* An empty P&L and a P&L of zero are different facts, and the distinguishing
-              signal is whether any section carries a line at all. */}
-          {!hasLines ? (
-            <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-12 text-center">
-              <p className="text-sm font-medium text-foreground">{t('empty')}</p>
-              <p className="mx-auto mt-1 max-w-prose text-sm text-muted-foreground">
-                {t('emptyHint')}
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <Section
-                section={report.data.revenue}
-                label={t('revenue')}
-                locale={locale}
-                onDrill={drill}
-              />
-              <Section
-                section={report.data.costOfSales}
-                label={t('costOfSales')}
-                locale={locale}
-                onDrill={drill}
-              />
-
-              <Subtotal
-                label={t('grossProfit')}
-                amount={report.data.grossProfit}
-                locale={locale}
-                // Margin is the number a CEO reads first, and it is not on the response.
-                // Suppressed at zero revenue rather than shown as 0% or NaN%.
-                note={
-                  revenueMinor > 0
-                    ? t('grossMarginLabel', {
-                        percent: ((grossMinor / revenueMinor) * 100).toFixed(1),
-                      })
-                    : undefined
-                }
-              />
-
-              <Section
-                section={report.data.expenses}
-                label={t('expenses')}
-                locale={locale}
-                onDrill={drill}
-              />
-
-              {/* A loss is named a loss. Rendering "Net Income −40,000" makes the reader do
-                  the sign in their head, and that is the line they are looking for. */}
-              <Subtotal
-                label={netMinor < 0 ? t('netLoss') : t('netIncome')}
-                amount={report.data.netIncome}
-                locale={locale}
-                emphasis
-                negative={netMinor < 0}
-              />
-            </div>
-          )}
-        </>
+        <StatementTable caption={t('title')} columns={[`${formatDate(range.from, locale)} – ${formatDate(range.to, locale)}`]} blocks={blocks} />
       )}
     </div>
   );

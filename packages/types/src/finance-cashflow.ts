@@ -90,6 +90,11 @@ export interface CashflowBucket {
 
 export interface CashflowCurrencyForecast {
   currency: string;
+  /**
+   * Cash held today in bank and cash accounts — company-wide only; null for a project's forecast
+   * or when money is hidden. `cumulativeNet` starts from it.
+   */
+  openingCash?: string | null;
   buckets: CashflowBucket[];
   totals: { inflows: CashflowInflows; outflows: CashflowOutflows; net: string | null };
   /** How many records feed each line (counts are never hidden). */

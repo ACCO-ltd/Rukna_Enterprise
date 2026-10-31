@@ -41,6 +41,23 @@ export interface BalanceSheetQueryDto {
   comparativeDate?: string;
 }
 
+/**
+ * Lines for both dates: every account with a balance on either, in code order. An account that
+ * held money on the comparison date and nothing now still shows, or the comparison column would
+ * not add up to its own total.
+ */
+function mergeLines(current: BSLine[], comparative?: BSLine[]): BSLine[] {
+  if (!comparative) return current;
+  const byId = new Map<string, BSLine>();
+  for (const l of current) byId.set(l.accountId, { ...l, comparativeBalance: '0.00' });
+  for (const l of comparative) {
+    const existing = byId.get(l.accountId);
+    if (existing) existing.comparativeBalance = l.balance;
+    else byId.set(l.accountId, { ...l, balance: '0.00', comparativeBalance: l.balance });
+  }
+  return [...byId.values()];
+}
+
 @Injectable()
 export class BalanceSheetService {
   constructor(
@@ -99,34 +116,19 @@ export class BalanceSheetService {
         label: 'Assets',
         total: totalAssets.toFixed(2),
         ...(comparative ? { comparativeTotal: comparative.totalAssets.toFixed(2) } : {}),
-        lines: current.assetLines.map((l) => ({
-          ...l,
-          ...(comparative
-            ? { comparativeBalance: comparative!.assetLines.find((cl) => cl.accountId === l.accountId)?.balance ?? '0.00' }
-            : {}),
-        })),
+        lines: mergeLines(current.assetLines, comparative?.assetLines),
       },
       liabilities: {
         label: 'Liabilities',
         total: current.totalLiabilities.toFixed(2),
         ...(comparative ? { comparativeTotal: comparative.totalLiabilities.toFixed(2) } : {}),
-        lines: current.liabilityLines.map((l) => ({
-          ...l,
-          ...(comparative
-            ? { comparativeBalance: comparative!.liabilityLines.find((cl) => cl.accountId === l.accountId)?.balance ?? '0.00' }
-            : {}),
-        })),
+        lines: mergeLines(current.liabilityLines, comparative?.liabilityLines),
       },
       equity: {
         label: 'Equity',
         total: current.totalEquity.toFixed(2),
         ...(comparative ? { comparativeTotal: comparative.totalEquity.toFixed(2) } : {}),
-        lines: current.equityLines.map((l) => ({
-          ...l,
-          ...(comparative
-            ? { comparativeBalance: comparative!.equityLines.find((cl) => cl.accountId === l.accountId)?.balance ?? '0.00' }
-            : {}),
-        })),
+        lines: mergeLines(current.equityLines, comparative?.equityLines),
       },
       totalLiabilitiesAndEquity: totalLiabEquity.toFixed(2),
       balanced,

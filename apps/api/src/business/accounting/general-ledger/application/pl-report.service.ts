@@ -165,7 +165,7 @@ export class PLReportService {
   }
 
   /**
-   * Monthly comparison: one P&L column per month in the fiscal year.
+   * Monthly comparison: one P&L column per month in the fiscal year, with each account's figure.
    */
   async generateMonthlyComparison(
     identity: RequestIdentity,
@@ -197,6 +197,9 @@ export class PLReportService {
           costOfSales: report.costOfSales.total,
           grossProfit: report.grossProfit,
           expenses: report.expenses.total,
+          // R-MC — each account's figure for the month, so the comparison reads account by
+          // account across the year, not only by section total.
+          lines: [...report.revenue.lines, ...report.costOfSales.lines, ...report.expenses.lines],
         };
       }),
     );

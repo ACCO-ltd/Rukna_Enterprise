@@ -6,7 +6,6 @@ import { DatePicker, FormField, SkeletonTable } from '@erp/ui';
 
 import { LoadError } from '@/components/load-error';
 
-import { formatDate } from '@/lib/format';
 import { MONEY_SCALE, toMinorUnits } from '@/lib/money';
 import { useProjectActualPl } from '@/features/accounting/hooks/use-accounting';
 import { Section, Subtotal } from '@/features/accounting/components/profit-loss';
@@ -67,13 +66,6 @@ export function ProjectPlContent({ projectId }: { projectId: string }) {
         <LoadError message={tPl('loadFailed')} onRetry={() => void report.refetch()} />
       ) : (
         <>
-          <p className="text-xs text-muted-foreground">
-            {tCommon('generatedAt', {
-              timestamp: formatDate(report.data.generatedAt, locale) ?? report.data.generatedAt,
-            })}
-            {' · '}
-            {tPl('closingExcludedNote')}
-          </p>
 
           {report.data.revenue.lines.length === 0 &&
           report.data.costOfSales.lines.length === 0 &&

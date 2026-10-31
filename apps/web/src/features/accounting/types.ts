@@ -432,6 +432,8 @@ export interface MonthlyPLColumn {
   grossProfit: string;
   expenses: string;
   netIncome: string;
+  /** Each account's figure for the month (income and expenses on their own side). */
+  lines?: ProfitLossLine[];
 }
 
 /**

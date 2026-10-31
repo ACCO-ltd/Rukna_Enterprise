@@ -654,12 +654,10 @@
     }
   },
   "trialBalance": {
-    "title": "Trial Balance",
-    "subtitle": "Opening, movement and closing balances for every account.",
+    "title": "Trial balance",
     "loadFailed": "Could not generate the trial balance.",
     "includeZero": "Include accounts with a zero closing balance",
     "empty": "No account carries a balance at this date.",
-    "emptyHint": "Nothing has been posted on or before this date, or every account nets to zero.",
     "colAccount": "Account",
     "colOpeningDebit": "Opening Dr",
     "colOpeningCredit": "Opening Cr",
@@ -671,35 +669,35 @@
     "balanced": "In balance",
     "notBalanced": "Out of balance",
     "notBalancedHint": "Closing debits of {debit} do not equal closing credits of {credit}. A trial balance that does not balance means the ledger has an entry that should not exist — this is not a rounding matter.",
-    "snapshotNote": "A closed period is read from its frozen snapshot rather than recomputed.",
     "openLedger": "Open the ledger for {account}",
-    "drillHint": "Select any account to open its ledger up to this date.",
     "csvCode": "Account code",
-    "csvName": "Account name"
+    "csvName": "Account name",
+    "showMovement": "Show opening and movement",
+    "colDebit": "Debit",
+    "colCredit": "Credit"
   },
   "profitLoss": {
-    "title": "Profit & Loss",
-    "subtitle": "Revenue, cost of sales and expenses over a date range.",
+    "title": "Profit and loss",
     "loadFailed": "Could not generate the profit and loss report.",
     "revenue": "Revenue",
-    "costOfSales": "Cost of Sales",
-    "grossProfit": "Gross Profit",
+    "costOfSales": "Cost of sales",
+    "grossProfit": "Gross profit",
     "expenses": "Expenses",
-    "netIncome": "Net Income",
-    "netLoss": "Net Loss",
+    "netIncome": "Net income",
+    "netLoss": "Net loss",
     "empty": "Nothing was posted in this range.",
-    "emptyHint": "Raise and post a journal, or widen the dates.",
     "sectionEmpty": "No account in this section carries an amount.",
-    "closingExcludedNote": "Year-end closing entries are excluded, so a closed year still reports the income it earned.",
     "projectFilter": "Project",
     "allProjects": "All projects",
     "grossMarginLabel": "Gross margin {percent}%",
     "openLedger": "Open the ledger for {account}",
-    "drillHint": "Select any line to open that account's ledger for this range.",
     "csvSection": "Section",
     "csvCode": "Account code",
     "csvName": "Account name",
-    "csvAmount": "Amount"
+    "csvAmount": "Amount",
+    "totalIncome": "Total income",
+    "totalCostOfSales": "Total cost of sales",
+    "totalExpenses": "Total expenses"
   },
   "projectActualPl": {
     "title": "Project Actual P&L (GL)",
@@ -733,30 +731,26 @@
     "basisNote": "Certified is net of retention and advance recovery, so it is not directly comparable with invoiced, received and outstanding."
   },
   "balanceSheet": {
-    "title": "Balance Sheet",
-    "subtitle": "What the organisation owns, owes, and is worth, at a date.",
+    "title": "Balance sheet",
     "loadFailed": "Could not generate the balance sheet.",
     "assets": "Assets",
     "liabilities": "Liabilities",
     "equity": "Equity",
-    "totalLiabilitiesAndEquity": "Liabilities and Equity",
+    "totalLiabilitiesAndEquity": "Total liabilities and equity",
     "comparativeLabel": "Compare with",
-    "colBalance": "Balance",
-    "colComparative": "Comparative",
-    "balanced": "Assets equal liabilities plus equity",
-    "notBalanced": "The sheet does not balance",
     "notBalancedHint": "Assets of {assets} do not equal liabilities and equity of {liabilitiesAndEquity}. The accounting equation cannot fail on its own — a difference means an entry exists that should not.",
     "empty": "No account carries a balance at this date.",
-    "emptyHint": "Nothing has been posted on or before this date.",
-    "sectionEmpty": "No account in this section carries a balance.",
-    "currentYearEarningsNote": "Equity includes the current year’s earnings as a live profit and loss figure, which is why the sheet balances before the year is closed.",
     "openLedger": "Open the ledger for {account}",
-    "drillHint": "Select any line to open that account's ledger up to this date.",
     "csvSection": "Section",
     "csvCode": "Account code",
     "csvName": "Account name",
     "csvBalance": "Balance",
-    "csvComparative": "Comparative"
+    "csvComparative": "Comparative",
+    "totalAssets": "Total assets",
+    "totalLiabilities": "Total liabilities",
+    "totalEquity": "Total equity",
+    "netIncomeThisYear": "Net income this year",
+    "earlierYearsNotClosed": "Earlier years not yet closed"
   },
   "ledger": {
     "title": "Account ledger",
@@ -789,24 +783,14 @@
     "cr": "Cr"
   },
   "monthlyPL": {
-    "title": "Monthly Comparison",
-    "subtitle": "Profit and loss by period across a fiscal year.",
+    "title": "Monthly comparison",
     "loadFailed": "Could not generate the comparison.",
     "fiscalYearLabel": "Fiscal year",
-    "selectFiscalYear": "— Select a fiscal year —",
-    "notFound": "That fiscal year no longer exists.",
     "noFiscalYears": "No fiscal year has been created.",
-    "noFiscalYearsHint": "A fiscal year and its periods have to exist before anything can be compared across them.",
-    "colPeriod": "Period",
-    "colRevenue": "Revenue",
-    "colCostOfSales": "Cost of Sales",
-    "colGrossProfit": "Gross Profit",
-    "colExpenses": "Expenses",
-    "colNetIncome": "Net Income",
-    "total": "Year to date",
+    "total": "Total",
     "empty": "Nothing was posted in any period of this year.",
-    "csvPeriod": "Period",
-    "openPeriod": "Open the profit and loss for {period}"
+    "csvCode": "Account code",
+    "csvName": "Account name"
   },
   "periodActions": {
     "heading": "Period management",
@@ -2031,5 +2015,25 @@
       "AR": "Receivables aging",
       "AP": "Payables aging"
     }
+  },
+  "reportPeriod": {
+    "range": {
+      "month": "This month",
+      "lastMonth": "Last month",
+      "quarter": "This quarter",
+      "year": "This year",
+      "lastYear": "Last year"
+    },
+    "asOf": {
+      "today": "Today",
+      "endLastMonth": "End of last month",
+      "endLastYear": "End of last year"
+    },
+    "compare": {
+      "none": "No comparison",
+      "endLastMonth": "Previous month end",
+      "endLastYear": "Previous year end"
+    },
+    "presets": "Quick dates"
   }
 }

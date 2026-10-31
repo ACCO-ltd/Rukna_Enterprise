@@ -1,293 +1,165 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useMemo, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Card, CardHeader, CardTitle, DatePicker, FilterBar, FilterField } from '@erp/ui';
+import { Alert, DatePicker, EmptyState, FilterBar, FilterField, SkeletonTable } from '@erp/ui';
 
+import { ListPageHeader } from '@/components/layout/list-page-header';
+import { LoadError } from '@/components/load-error';
 import { formatDate, formatMoney } from '@/lib/format';
+import { MONEY_SCALE, toMinorUnits } from '@/lib/money';
 
-import { useBalanceSheet } from '../hooks/use-accounting';
+import { useAccounts, useBalanceSheet } from '../hooks/use-accounting';
+import { todayWireDate } from '../invoice-overdue';
 import { exportCsv, reportFilename } from '../lib/export-csv';
 import { ledgerHref } from '../lib/report-links';
+import { AS_OF_PRESETS, asOfDate, figuresOf, statementSections, type AsOfPreset, type StatementLine } from '../statement';
 import type { BalanceSheet, BalanceSheetSection } from '../types';
 import { ReportActions } from './report-actions';
-import { LoadError } from '@/components/load-error';
+import { PresetButtons, StatementTable, type StatementBlock } from './statement-table';
 
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
-}
+const COMPARE = ['none', 'endLastMonth', 'endLastYear'] as const;
+type Compare = (typeof COMPARE)[number];
 
+/** Equity lines the server works out (this year's net income, earlier years not yet closed) — not accounts. */
+const SYNTHETIC = new Set(['CURRENT_YEAR_EARNINGS', 'PRIOR_YEAR_EARNINGS']);
+
+/**
+ * R — the balance sheet at a date as one statement: assets, liabilities, equity, sub-accounts under
+ * their heading, with an optional comparison column. Earnings not yet closed into retained earnings
+ * show as their own equity lines. Each account opens its ledger up to the date.
+ */
 export function BalanceSheetReport() {
   const t = useTranslations('accounting.balanceSheet');
+  const tAsOf = useTranslations('accounting.reportPeriod.asOf');
+  const tCompare = useTranslations('accounting.reportPeriod.compare');
+  const tClass = useTranslations('accounting.chartOfAccounts.classSection');
   const tCommon = useTranslations('accounting.common');
-  const tShared = useTranslations('common');
-  const locale = useLocale() as 'en' | 'ar';
-  const router = useRouter();
+  const tPreset = useTranslations('accounting.reportPeriod');
+  const locale = useLocale() as 'en';
 
-  const [asOfDate, setAsOfDate] = useState(today);
-  const [comparativeDate, setComparativeDate] = useState('');
+  const today = todayWireDate();
+  const [preset, setPreset] = useState<AsOfPreset | null>('today');
+  const [custom, setCustom] = useState(today);
+  const asOf = preset ? asOfDate(preset, today) : custom;
+  const [compare, setCompare] = useState<Compare>('none');
+  const comparativeDate = compare === 'none' ? undefined : asOfDate(compare, asOf);
 
-  const report = useBalanceSheet(asOfDate, comparativeDate || undefined);
-  const comparing = Boolean(comparativeDate) && Boolean(report.data?.comparativeDate);
+  const report = useBalanceSheet(asOf, comparativeDate);
+  const accounts = useAccounts();
+  const comparing = Boolean(comparativeDate && report.data?.comparativeDate);
 
-  const hasLines =
-    (report.data?.assets.lines.length ?? 0) +
-      (report.data?.liabilities.lines.length ?? 0) +
-      (report.data?.equity.lines.length ?? 0) >
-    0;
+  const blocks = useMemo<StatementBlock[]>(() => {
+    if (!report.data) return [];
+    const d = report.data;
+    const all = [...d.assets.lines, ...d.liabilities.lines, ...d.equity.lines].filter((l) => !SYNTHETIC.has(l.accountId));
+    const columns = [figuresOf(all)];
+    if (comparing) columns.push(new Map(all.map((l) => [l.accountId, l.comparativeBalance ?? '0'])));
+    type Fallback = { accountClass: 'ASSET' | 'LIABILITY' | 'EQUITY'; code: string; name: string };
+    const where = new Map<string, Fallback>([
+      ...d.assets.lines.map((l) => [l.accountId, { accountClass: 'ASSET', code: l.accountCode, name: l.accountName }] as [string, Fallback]),
+      ...d.liabilities.lines.map((l) => [l.accountId, { accountClass: 'LIABILITY', code: l.accountCode, name: l.accountName }] as [string, Fallback]),
+      ...d.equity.lines.map((l) => [l.accountId, { accountClass: 'EQUITY', code: l.accountCode, name: l.accountName }] as [string, Fallback]),
+    ]);
+    const [assets, liabilities, equity] = statementSections(accounts.data ?? [], columns, ['ASSET', 'LIABILITY', 'EQUITY'], where);
+    const minor = (v: string | undefined) => toMinorUnits(v ?? '0', MONEY_SCALE);
+    const totals = (s: BalanceSheetSection) => (comparing ? [minor(s.total), minor(s.comparativeTotal)] : [minor(s.total)]);
+    const earnings: StatementLine[] = d.equity.lines
+      .filter((l) => SYNTHETIC.has(l.accountId))
+      .map((l) => ({
+        accountId: l.accountId,
+        code: '',
+        name: l.accountId === 'CURRENT_YEAR_EARNINGS' ? t('netIncomeThisYear') : t('earlierYearsNotClosed'),
+        depth: 0,
+        heading: false,
+        amounts: comparing ? [minor(l.balance), minor(l.comparativeBalance)] : [minor(l.balance)],
+      }));
+    const hrefFor = (id: string) => ledgerHref(id, { to: asOf });
+    return [
+      { kind: 'section', key: 'assets', label: tClass('ASSET'), lines: assets!.lines, totals: totals(d.assets), totalLabel: t('totalAssets'), hrefFor },
+      { kind: 'section', key: 'liabilities', label: tClass('LIABILITY'), lines: liabilities!.lines, totals: totals(d.liabilities), totalLabel: t('totalLiabilities'), hrefFor },
+      { kind: 'section', key: 'equity', label: tClass('EQUITY'), lines: [...equity!.lines, ...earnings], totals: totals(d.equity), totalLabel: t('totalEquity'), hrefFor: (id) => (SYNTHETIC.has(id) ? '' : hrefFor(id)) },
+      {
+        kind: 'summary', key: 'le', label: t('totalLiabilitiesAndEquity'), strong: true,
+        amounts: comparing ? [minor(d.totalLiabilitiesAndEquity), minor(d.comparativeTotalLiabilitiesAndEquity)] : [minor(d.totalLiabilitiesAndEquity)],
+      },
+    ];
+  }, [report.data, accounts.data, comparing, asOf, t, tClass]);
 
-  const handleExport = () => {
-    if (!report.data) return;
-    exportBalanceSheet(report.data, asOfDate, comparing, t);
-  };
+  const hasLines = (report.data?.assets.lines.length ?? 0) + (report.data?.liabilities.lines.length ?? 0) + (report.data?.equity.lines.length ?? 0) > 0;
+  const columnLabels = [formatDate(asOf, locale) ?? asOf, ...(comparing && comparativeDate ? [formatDate(comparativeDate, locale) ?? comparativeDate] : [])];
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <FilterBar>
-          <FilterField id="bs-date" label={tCommon('asOfDate')}>
+    <div className="space-y-5">
+      <ListPageHeader
+        title={t('title')}
+        actions={<ReportActions onExport={() => report.data && exportBalanceSheet(report.data, asOf, comparing, t)} exportDisabled={!hasLines} />}
+      />
+
+      <FilterBar>
+        <FilterField id="bs-date" label={tCommon('asOfDate')}>
+          <div className="flex flex-wrap items-center gap-2">
+            <PresetButtons label={tPreset('presets')} options={AS_OF_PRESETS} value={preset} onChange={setPreset} labelFor={(p) => tAsOf(p)} />
             <DatePicker
               id="bs-date"
-              value={asOfDate}
-              onChange={(value) => setAsOfDate(value)}
+              value={asOf}
+              onChange={(value) => {
+                setCustom(value);
+                setPreset(null);
+              }}
             />
-          </FilterField>
+          </div>
+        </FilterField>
+        <FilterField id="bs-compare" label={t('comparativeLabel')}>
+          <PresetButtons label={t('comparativeLabel')} options={COMPARE} value={compare} onChange={setCompare} labelFor={(c) => tCompare(c)} />
+        </FilterField>
+      </FilterBar>
 
-          <FilterField id="bs-comparative" label={t('comparativeLabel')}>
-            <DatePicker
-              id="bs-comparative"
-              value={comparativeDate}
-              onChange={(value) => setComparativeDate(value)}
-            />
-          </FilterField>
-        </FilterBar>
-
-        <ReportActions onExport={handleExport} exportDisabled={!hasLines} />
-      </div>
-
-      {report.isPending ? (
-        <div role="status" aria-live="polite">
-          <span className="sr-only">{tShared('loading')}</span>
-          <div
-            className="h-64 animate-pulse rounded-panel border border-border bg-muted"
-            aria-hidden="true"
-          />
-        </div>
-      ) : report.isError ? (
+      {report.isError ? (
         <LoadError message={t('loadFailed')} onRetry={() => void report.refetch()} />
+      ) : report.isPending || accounts.isPending ? (
+        <SkeletonTable rows={8} columns={2} label={t('title')} />
+      ) : !hasLines ? (
+        <EmptyState title={t('empty')} />
       ) : (
         <>
-          {/* Assets = Liabilities + Equity is an identity, not a target. If it fails, the
-              ledger holds an entry that should not exist, and every figure below is suspect
-              until that is explained — so it leads, in error tone. */}
           {report.data.balanced ? null : (
             <Alert
               variant="error"
               messages={[
                 t('notBalancedHint', {
-                  assets:
-                    formatMoney(report.data.assets.total, undefined, locale) ??
-                    report.data.assets.total,
-                  liabilitiesAndEquity:
-                    formatMoney(report.data.totalLiabilitiesAndEquity, undefined, locale) ??
-                    report.data.totalLiabilitiesAndEquity,
+                  assets: formatMoney(report.data.assets.total, 'USD', locale) ?? report.data.assets.total,
+                  liabilitiesAndEquity: formatMoney(report.data.totalLiabilitiesAndEquity, 'USD', locale) ?? report.data.totalLiabilitiesAndEquity,
                 }),
               ]}
             />
           )}
-
-          <p className="text-xs text-muted-foreground">
-            {tCommon('generatedAt', {
-              timestamp: formatDate(report.data.generatedAt, locale) ?? report.data.generatedAt,
-            })}
-            {hasLines ? ` · ${t('drillHint')}` : ''}
-          </p>
-
-          {!hasLines ? (
-            <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-12 text-center">
-              <p className="text-sm font-medium text-foreground">{t('empty')}</p>
-              <p className="mx-auto mt-1 max-w-prose text-sm text-muted-foreground">
-                {t('emptyHint')}
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <Section
-                section={report.data.assets}
-                label={t('assets')}
-                locale={locale}
-                comparing={comparing}
-                asOfDate={asOfDate}
-                onOpen={(href) => router.push(href)}
-              />
-              <Section
-                section={report.data.liabilities}
-                label={t('liabilities')}
-                locale={locale}
-                comparing={comparing}
-                asOfDate={asOfDate}
-                onOpen={(href) => router.push(href)}
-              />
-              <Section
-                section={report.data.equity}
-                label={t('equity')}
-                locale={locale}
-                comparing={comparing}
-                asOfDate={asOfDate}
-                onOpen={(href) => router.push(href)}
-              />
-
-              <div className="flex flex-wrap items-baseline justify-between gap-3 rounded-panel border-2 border-brand-primary/30 bg-brand-primary/5 px-4 py-4">
-                <p className="text-base font-semibold text-foreground">
-                  {t('totalLiabilitiesAndEquity')}
-                </p>
-                <p className="text-lg font-semibold text-foreground">
-                  <bdi className="tabular-nums">
-                    {formatMoney(report.data.totalLiabilitiesAndEquity, undefined, locale)}
-                  </bdi>
-                </p>
-              </div>
-
-              {/* Why the sheet balances mid-year. Without this, a reader reconciling equity
-                  against the trial balance finds a figure that is on no account. */}
-              <p className="max-w-prose text-xs text-muted-foreground">
-                {t('currentYearEarningsNote')}
-              </p>
-            </div>
-          )}
-
-          <p
-            className={
-              report.data.balanced
-                ? 'text-sm font-medium text-brand-primary'
-                : 'text-sm font-medium text-danger'
-            }
-            aria-live="polite"
-          >
-            {report.data.balanced ? t('balanced') : t('notBalanced')}
-          </p>
+          <StatementTable caption={t('title')} columns={columnLabels} blocks={blocks} />
         </>
       )}
     </div>
   );
 }
 
-function Section({
-  section,
-  label,
-  locale,
-  comparing,
-  asOfDate,
-  onOpen,
-}: {
-  section: BalanceSheetSection;
-  label: string;
-  locale: 'en' | 'ar';
-  comparing: boolean;
-  asOfDate: string;
-  onOpen: (href: string) => void;
-}) {
-  const t = useTranslations('accounting.balanceSheet');
-
-  return (
-    <Card className="gap-0 py-0">
-      <CardHeader className="border-b border-border py-3">
-        <CardTitle className="text-sm">{label}</CardTitle>
-        <div className="flex items-baseline gap-6">
-          {comparing ? (
-            <p className="text-sm text-muted-foreground">
-              <bdi className="tabular-nums">
-                {formatMoney(section.comparativeTotal, undefined, locale)}
-              </bdi>
-            </p>
-          ) : null}
-          <p className="text-sm font-semibold text-foreground">
-            <bdi className="tabular-nums">{formatMoney(section.total, undefined, locale)}</bdi>
-          </p>
-        </div>
-      </CardHeader>
-
-      {section.lines.length === 0 ? (
-        <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('sectionEmpty')}</p>
-      ) : (
-        <ul className="divide-y divide-border">
-          {section.lines.map((line) => {
-            // A balance-sheet figure is cumulative to the as-of date, like a trial-balance
-            // closing balance: `to = asOfDate`, `from` = inception.
-            const href = ledgerHref(line.accountId, { to: asOfDate });
-            return (
-              <li
-                key={line.accountId}
-                className="cursor-pointer px-4 py-2.5 hover:bg-surface-subtle"
-                onClick={() => onOpen(href)}
-              >
-                <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
-                  <div className="min-w-0">
-                    {/* The line's one real link; the row click mirrors it for the whole width. */}
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onOpen(href);
-                      }}
-                      className="rounded-control text-start focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
-                      aria-label={t('openLedger', { account: line.accountName })}
-                    >
-                      <span className="font-mono text-xs text-brand-primary tabular-nums">
-                        {line.accountCode}
-                      </span>
-                      <span className="ms-2 text-sm text-brand-primary underline-offset-2 hover:underline">
-                        {line.accountName}
-                      </span>
-                    </button>
-                  </div>
-                  <div className="flex items-baseline gap-6">
-                    {comparing ? (
-                      <span className="text-sm text-muted-foreground">
-                        <bdi className="tabular-nums">
-                          {formatMoney(line.comparativeBalance, undefined, locale)}
-                        </bdi>
-                      </span>
-                    ) : null}
-                    <span className="text-sm text-foreground">
-                      <bdi className="tabular-nums">
-                        {formatMoney(line.balance, undefined, locale)}
-                      </bdi>
-                    </span>
-                  </div>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </Card>
-  );
-}
-
-/** Serialises the three sections into one CSV, tagged by section, with an optional comparative. */
+/** The three sections in one CSV, tagged by section, with the comparison when shown. */
 function exportBalanceSheet(
   data: BalanceSheet,
-  asOfDate: string,
+  asOf: string,
   comparing: boolean,
   t: ReturnType<typeof useTranslations<'accounting.balanceSheet'>>,
 ): void {
   const headers = [t('csvSection'), t('csvCode'), t('csvName'), t('csvBalance')];
   if (comparing) headers.push(t('csvComparative'));
-
-  const sectionRows = (label: string, section: BalanceSheetSection) =>
+  const rows = (label: string, section: BalanceSheetSection) =>
     section.lines.map((line) => {
-      const row: (string | undefined)[] = [label, line.accountCode, line.accountName, line.balance];
+      const name = line.accountId === 'CURRENT_YEAR_EARNINGS' ? t('netIncomeThisYear') : line.accountId === 'PRIOR_YEAR_EARNINGS' ? t('earlierYearsNotClosed') : line.accountName;
+      const row: string[] = [label, SYNTHETIC.has(line.accountId) ? '' : line.accountCode, name, line.balance];
       if (comparing) row.push(line.comparativeBalance ?? '');
       return row;
     });
-
-  const rows = [
-    ...sectionRows(t('assets'), data.assets),
-    ...sectionRows(t('liabilities'), data.liabilities),
-    ...sectionRows(t('equity'), data.equity),
-  ];
-
-  exportCsv(reportFilename('balance-sheet', asOfDate), headers, rows);
+  exportCsv(reportFilename('balance-sheet', asOf), headers, [
+    ...rows(t('assets'), data.assets),
+    ...rows(t('liabilities'), data.liabilities),
+    ...rows(t('equity'), data.equity),
+  ]);
 }

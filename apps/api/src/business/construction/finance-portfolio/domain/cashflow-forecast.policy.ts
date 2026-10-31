@@ -165,10 +165,17 @@ const outflowOf = (s: Sums) => s.fromSupplierBills.plus(s.fromOpenCommitments).p
 /**
  * Sum the items per currency and bucket. Bucket order: NOW, the periods, LATER, UNDATED — every
  * bucket is present so the table and chart line up across currencies. `cumulativeNet` runs from
- * NOW through LATER; UNDATED has none. Amounts are null when money is hidden.
+ * the opening cash (zero when none is given) through NOW to LATER; UNDATED has none. Amounts are null when money is hidden.
  */
-export function buildForecast(items: CashflowItem[], grid: CashflowGrid, moneyVisible: boolean): CashflowCurrencyForecast[] {
+export function buildForecast(
+  items: CashflowItem[],
+  grid: CashflowGrid,
+  moneyVisible: boolean,
+  /** Cash held today per currency; the running total starts from it. */
+  openingCash: ReadonlyMap<string, Decimal> = new Map(),
+): CashflowCurrencyForecast[] {
   const byCurrency = new Map<string, { sums: Map<string, Sums>; counts: Record<CashflowLineType, number> }>();
+  for (const currency of openingCash.keys()) byCurrency.set(currency, { sums: new Map(), counts: emptyCounts() });
   for (const item of items) {
     const entry = byCurrency.get(item.currency) ?? {
       sums: new Map<string, Sums>(),
@@ -193,7 +200,8 @@ export function buildForecast(items: CashflowItem[], grid: CashflowGrid, moneyVi
   return [...byCurrency.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([currency, entry]) => {
-      let running = ZERO;
+      const opening = openingCash.get(currency) ?? null;
+      let running = opening ?? ZERO;
       const total = emptySums();
       const buckets: CashflowBucket[] = layout.map((slot) => {
         const s = entry.sums.get(slot.key) ?? emptySums();
@@ -224,6 +232,7 @@ export function buildForecast(items: CashflowItem[], grid: CashflowGrid, moneyVi
       const outflow = outflowOf(total);
       return {
         currency,
+        openingCash: opening === null ? null : money(opening),
         buckets,
         totals: {
           inflows: {

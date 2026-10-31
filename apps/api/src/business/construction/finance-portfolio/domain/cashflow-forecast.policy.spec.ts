@@ -133,6 +133,15 @@ describe('cash-flow forecast policy (ADR-043 Phase 4)', () => {
     ];
     const forecast = buildForecast(items, grid, true);
 
+    it('starts the running total from the cash held today when given', () => {
+      const withCash = buildForecast(items, grid, true, new Map([['USD', new Decimal(1000)]]));
+      const usd = withCash.find((c) => c.currency === 'USD')!;
+      const plain = forecast.find((c) => c.currency === 'USD')!;
+      expect(usd.openingCash).toBe('1000.00');
+      expect(Number(usd.buckets[0]!.cumulativeNet)).toBe(Number(plain.buckets[0]!.cumulativeNet) + 1000);
+      expect(plain.openingCash).toBeNull();
+    });
+
     it('keeps currencies apart, ordered by code', () => {
       expect(forecast.map((c) => c.currency)).toEqual(['SOS', 'USD']);
       expect(forecast[0]!.totals.inflows.total).toBe('50.00');

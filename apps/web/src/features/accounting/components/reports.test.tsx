@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
 import { pickDate } from '@/test/pick-date';
-import { getProfitLoss, getTrialBalance } from '@/features/accounting/api/accounting-api';
+import { getProfitLoss, getTrialBalance, listAccounts } from '@/features/accounting/api/accounting-api';
 import type {
   ProfitLoss,
   ProfitLossLine,
@@ -18,6 +18,7 @@ import { TrialBalanceReport } from './trial-balance';
 vi.mock('@/features/accounting/api/accounting-api', () => ({
   getTrialBalance: vi.fn(),
   getProfitLoss: vi.fn(),
+  listAccounts: vi.fn(),
 }));
 
 // The reports now drill into the ledger, so they call `useRouter`. The test harness does not
@@ -25,7 +26,16 @@ vi.mock('@/features/accounting/api/accounting-api', () => ({
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn(), prefetch: vi.fn() }),
   useSearchParams: () => new URLSearchParams(),
+  usePathname: () => '/finance/accounting/profit-loss',
 }));
+
+/** A chart account as the statement needs it: code, name, class, no parent. */
+function account(id: string, code: string, name: string, accountClass: string) {
+  return {
+    id, code, status: 'ACTIVE', normalBalance: 'DEBIT',
+    versions: [{ versionNumber: 1, name, accountClass, accountSubtype: 'OTHER', parentAccountId: null, isPostingAllowed: true, isControlAccount: false, controlPostingPolicy: 'UNRESTRICTED', effectiveFrom: '2026-01-01', effectiveTo: null }],
+  };
+}
 
 function tbLine(overrides: Partial<TrialBalanceLine> = {}): TrialBalanceLine {
   return {
@@ -129,15 +139,30 @@ beforeEach(() => {
   vi.mocked(getProfitLoss).mockReset();
   vi.mocked(getTrialBalance).mockResolvedValue(trialBalance());
   vi.mocked(getProfitLoss).mockResolvedValue(profitLoss());
+  vi.mocked(listAccounts).mockResolvedValue([
+    account('acc-rev', '42600', 'Project Revenue', 'INCOME'),
+    account('acc-cos', '50303', 'Material Purchase', 'COST_OF_SALES'),
+    account('acc-exp', '60100', 'Office Expense', 'EXPENSE'),
+  ] as never);
 });
 
 describe('TrialBalanceReport', () => {
-  it('lists each account with its opening, movement and closing columns', async () => {
+  it('lists each account with its debit or credit balance, grouped by class', async () => {
     renderWithProviders(<TrialBalanceReport />);
 
     expect(await screen.findByText('Salaam Bank')).toBeInTheDocument();
     expect(screen.getByText('Project Revenue')).toBeInTheDocument();
     expect(screen.getByText('Totals')).toBeInTheDocument();
+    expect(screen.getByText('Assets')).toBeInTheDocument();
+  });
+
+  it('adds the opening and movement columns when asked', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<TrialBalanceReport />);
+    await screen.findByText('Salaam Bank');
+    expect(screen.queryByText('Opening Dr')).not.toBeInTheDocument();
+    await user.click(screen.getByLabelText('Show opening and movement'));
+    expect(screen.getByText('Opening Dr')).toBeInTheDocument();
   });
 
   it('confirms the ledger is in balance', async () => {
@@ -205,11 +230,12 @@ describe('ProfitLossReport', () => {
   it('shows revenue, cost of sales, gross profit, expenses and net income', async () => {
     renderWithProviders(<ProfitLossReport />);
 
-    expect(await screen.findByText('Revenue')).toBeInTheDocument();
-    expect(screen.getByText('Cost of Sales')).toBeInTheDocument();
-    expect(screen.getByText('Gross Profit')).toBeInTheDocument();
+    expect(await screen.findByText('Income')).toBeInTheDocument();
+    expect(screen.getByText('Cost of sales')).toBeInTheDocument();
+    expect(screen.getByText('Gross profit')).toBeInTheDocument();
     expect(screen.getByText('Expenses')).toBeInTheDocument();
-    expect(screen.getByText('Net Income')).toBeInTheDocument();
+    expect(screen.getByText('Net income')).toBeInTheDocument();
+    expect(screen.getByText('Total income')).toBeInTheDocument();
   });
 
   it('lists the accounts making up each section', async () => {
@@ -238,7 +264,7 @@ describe('ProfitLossReport', () => {
 
     renderWithProviders(<ProfitLossReport />);
 
-    await screen.findByText('Gross Profit');
+    await screen.findByText('Gross profit');
     expect(screen.queryByText(/Gross margin/)).not.toBeInTheDocument();
     expect(screen.queryByText(/NaN/)).not.toBeInTheDocument();
   });
@@ -252,21 +278,15 @@ describe('ProfitLossReport', () => {
 
     renderWithProviders(<ProfitLossReport />);
 
-    expect(await screen.findByText('Net Loss')).toBeInTheDocument();
-    expect(screen.queryByText('Net Income')).not.toBeInTheDocument();
-  });
-
-  it('says that closing entries are excluded', async () => {
-    renderWithProviders(<ProfitLossReport />);
-
-    expect(await screen.findByText(/closing entries are excluded/)).toBeInTheDocument();
+    expect(await screen.findByText('Net loss')).toBeInTheDocument();
+    expect(screen.queryByText('Net income')).not.toBeInTheDocument();
   });
 
   it('asks the server again when the range changes', async () => {
     const user = userEvent.setup();
     renderWithProviders(<ProfitLossReport />);
 
-    await screen.findByText('Revenue');
+    await screen.findByText('Income');
     await pickDate(user, screen.getByRole('button', { name: 'Date range' }), '2026-03-01');
 
     expect(vi.mocked(getProfitLoss)).toHaveBeenLastCalledWith(

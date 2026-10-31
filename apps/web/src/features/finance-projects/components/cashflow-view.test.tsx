@@ -102,11 +102,11 @@ describe('CashflowView', () => {
     renderWithProviders(<CashflowView />, { permissions: [PERMISSION] });
 
     const table = await screen.findByRole('region', { name: 'Cash flow in SOS' });
-    for (const header of ['Period', 'Money in', 'Money out', 'Net', 'Cumulative net', 'Issued invoices', 'Stages not yet invoiced', 'Supplier bills', 'Open purchase orders', 'Opening balances — receivable', 'Opening balances — payable']) {
+    for (const header of ['Period', 'Money in', 'Money out', 'Net', 'Running total', 'Issued invoices', 'Stages not yet invoiced', 'Supplier bills', 'Open purchase orders', 'Opening balances — receivable', 'Opening balances — payable']) {
       expect(within(table).getAllByRole('columnheader', { name: header }).length).toBeGreaterThan(0);
     }
     expect(within(table).getByText('Overdue / now')).toBeInTheDocument();
-    expect(within(table).getByText('Week of 5 Oct 2026')).toBeInTheDocument();
+    // A week with nothing in or out is left out; the weeks that carry money stay.
     expect(within(table).getByText('From 4 Jan 2027')).toBeInTheDocument();
     expect(within(table).getByText('Undated')).toBeInTheDocument();
     expect(within(table).getByRole('cell', { name: 'Total' })).toBeInTheDocument();
