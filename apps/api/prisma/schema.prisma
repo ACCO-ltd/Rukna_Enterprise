@@ -3944,6 +3944,10 @@ model JournalEntry {
   postedBy                 String?         @map("posted_by")
   reversedBy               String?         @map("reversed_by")
   reversalReason           String?         @map("reversal_reason")
+  /// GL-J — an unposted manual journal set aside: it never reaches the ledger and stays on record.
+  cancelledBy              String?         @map("cancelled_by")
+  cancelledAt              DateTime?       @map("cancelled_at")
+  cancellationReason       String?         @map("cancellation_reason") @db.VarChar(500)
   /// G-2 — an accrual's automatic reversal date: when the journal posts, its mirror posts too, dated here.
   autoReverseOn            DateTime?       @map("auto_reverse_on") @db.Date
   revision                 Int             @default(1)
@@ -4934,6 +4938,7 @@ enum JournalStatus {
   REJECTED
   POSTED
   REVERSED
+  CANCELLED
 }
 
 enum EntryPurpose {

@@ -40,6 +40,9 @@ import {
   removeSignatory,
   postJournal,
   reverseJournal,
+  setAccountStatus,
+  cancelJournal,
+  listJournalEntries,
   submitJournal,
   updateJournal,
   createPostingProfile,
@@ -95,6 +98,7 @@ import type {
   PostingProfile,
   ProfitLoss,
   ReverseJournalPayload,
+  JournalBookEntry,
   TrialBalance,
   InvoiceDocumentSettings,
   InvoiceNumbering,
@@ -207,6 +211,22 @@ export function useCreateAccount() {
  * roll up — so the chart and the trial balance are both invalidated, exactly as `useCreateAccount`
  * does. Narrower invalidation would leave a stale name or a stale posting flag on screen.
  */
+export function useSetAccountStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status }: { id: string; status: 'ACTIVE' | 'INACTIVE' }) => setAccountStatus(id, status),
+    meta: {
+      successToast: {
+        key: 'accounting.feedback.accountStatus',
+        values: (account) => ({ code: (account as Account).code, status: (account as Account).status }),
+      },
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: accountingKeys.accounts() });
+    },
+  });
+}
+
 export function useUpdateAccount() {
   const qc = useQueryClient();
   return useMutation({
@@ -494,6 +514,8 @@ export function useJournalAction(id: string) {
           return postJournal(id);
         case 'reverse':
           return reverseJournal(id, action.payload);
+        case 'cancel':
+          return cancelJournal(id, action.reason);
       }
     },
     meta: {
@@ -521,7 +543,17 @@ export type JournalActionRequest =
   | { type: 'submit' }
   | { type: 'approve'; payload: ApproveJournalPayload }
   | { type: 'post' }
-  | { type: 'reverse'; payload: ReverseJournalPayload };
+  | { type: 'reverse'; payload: ReverseJournalPayload }
+  | { type: 'cancel'; reason: string };
+
+/** GL-J — the day book: every posted entry in the range. */
+export function useJournalEntries(fromDate: string, toDate: string): UseQueryResult<JournalBookEntry[], Error> {
+  return useQuery({
+    queryKey: [...accountingKeys.journals(), 'entries', fromDate, toDate],
+    queryFn: () => listJournalEntries(fromDate, toDate),
+    enabled: Boolean(fromDate && toDate),
+  });
+}
 
 /**
  * `enabled` on a falsy date so the report is not requested before one is chosen. The query

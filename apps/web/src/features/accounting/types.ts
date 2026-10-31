@@ -139,7 +139,8 @@ export type JournalStatus =
   | 'APPROVED'
   | 'REJECTED'
   | 'POSTED'
-  | 'REVERSED';
+  | 'REVERSED'
+  | 'CANCELLED';
 
 export type JournalCategory =
   | 'GENERAL'
@@ -211,8 +212,44 @@ export interface JournalEntry {
   rejectedAt: string | null;
   rejectionReason: string | null;
   postedBy: string | null;
+  /** GL-J — an unposted journal set aside. */
+  cancelledBy?: string | null;
+  cancelledAt?: string | null;
+  cancellationReason?: string | null;
+  reversalReason?: string | null;
   createdAt: string;
   lines: JournalLine[];
+  // `GET /journals/:id` only — who did what by name, and the journals around this one.
+  preparedBy?: string;
+  preparedByName?: string | null;
+  submittedByName?: string | null;
+  approvedByName?: string | null;
+  postedByName?: string | null;
+  rejectedByName?: string | null;
+  reversedByName?: string | null;
+  cancelledByName?: string | null;
+  reversals?: JournalLink[];
+  reversalOf?: JournalLink | null;
+}
+
+export interface JournalLink {
+  id: string;
+  journalNumber: string | null;
+  accountingDate: string;
+}
+
+/** `GET /journals/entries` — one posted entry in the day book, whatever posted it. */
+export interface JournalBookEntry {
+  id: string;
+  journalNumber: string | null;
+  accountingDate: string;
+  description: string;
+  currencyCode: string;
+  sourceDocumentType: string | null;
+  sourceDocumentId: string | null;
+  entryPurpose: EntryPurpose;
+  reversalOfJournalEntryId: string | null;
+  totalAmount: string;
 }
 
 /**
@@ -376,6 +413,8 @@ export interface AccountLedger {
   accountId: string;
   accountCode: string;
   accountName: string;
+  /** GL-L — the side the account normally sits on; balances are debits less credits. */
+  normalBalance?: 'DEBIT' | 'CREDIT';
   openingBalance: string;
   periodDebit: string;
   periodCredit: string;

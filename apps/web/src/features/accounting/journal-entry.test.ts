@@ -266,18 +266,19 @@ describe('formatDifference', () => {
 
 describe('availableActions', () => {
   it.each([
-    ['DRAFT', ['submit']],
-    ['SUBMITTED', ['approve', 'reject']],
-    ['APPROVED', ['post']],
+    ['DRAFT', ['submit', 'cancel']],
+    ['SUBMITTED', ['approve', 'reject', 'cancel']],
+    ['APPROVED', ['post', 'cancel']],
     ['POSTED', ['reverse']],
     ['REVERSED', []],
+    ['CANCELLED', []],
   ] as const)('offers %s exactly what the server accepts', (status, expected) => {
     expect(availableActions(status)).toEqual(expected);
   });
 
-  /** The server submits only a DRAFT: a rejected journal is corrected first (`canEditJournal`). */
-  it('offers no direct action on a rejected journal', () => {
-    expect(availableActions('REJECTED')).toEqual([]);
+  /** The server submits only a DRAFT: a rejected journal is corrected first (`canEditJournal`), or cancelled. */
+  it('offers a rejected journal only cancelling', () => {
+    expect(availableActions('REJECTED')).toEqual(['cancel']);
   });
 });
 

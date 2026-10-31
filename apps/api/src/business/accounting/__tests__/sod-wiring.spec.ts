@@ -92,7 +92,8 @@ describe('Accounting SoD wiring (ADR-022)', () => {
     const prisma = {
       journalEntry: {
         findFirst: jest.fn().mockResolvedValue({ id: 'j1', status: 'SUBMITTED', createdBy: 'alice' }),
-        update: jest.fn().mockResolvedValue({ id: 'j1', status: 'REJECTED' }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'j1', status: 'REJECTED' }),
       },
     };
     const svc = new ManualJournalService(

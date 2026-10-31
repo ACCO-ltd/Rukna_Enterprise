@@ -202,13 +202,25 @@ describe('CreateAccountForm', () => {
     renderWithProviders(<CreateAccountForm title="New account" onDone={vi.fn()} />);
 
     await user.type(screen.getByLabelText('Account code'), '51150');
-    await chooseOption(user, screen.getByLabelText('Class'), 'EXPENSE');
+    await chooseOption(user, screen.getByLabelText('Class'), 'COST_OF_SALES');
     await user.click(screen.getByLabelText('Make this a sub-account'));
     await user.click(screen.getByRole('combobox', { name: 'Parent account' }));
     await user.click(await screen.findByRole('option', { name: /51000 · Materials/ }));
 
     expect(screen.getByLabelText('Account code')).toHaveValue('51150');
-    expect(screen.getByLabelText('Class')).toHaveTextContent('Expense');
+    expect(screen.getByLabelText('Class')).toHaveTextContent('Cost of Sales');
+  });
+
+  /** GL-C — the server refuses a parent of another class, or one that takes entries. */
+  it('offers as parents only headings of the chosen class', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<CreateAccountForm title="New account" onDone={vi.fn()} />);
+
+    await chooseOption(user, screen.getByLabelText('Class'), 'EXPENSE');
+    await user.click(screen.getByLabelText('Make this a sub-account'));
+    await user.click(screen.getByRole('combobox', { name: 'Parent account' }));
+    expect(screen.queryByRole('option', { name: /51000 · Materials/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /51100/ })).not.toBeInTheDocument();
   });
 
   it('offers Reset once something is typed, and it clears the form', async () => {

@@ -54,19 +54,25 @@ function build(
     journalLine: { deleteMany: jest.fn().mockResolvedValue({ count: 2 }) },
   };
 
+  const update = jest.fn().mockImplementation(({ data }: { data: unknown }) => Promise.resolve({ id: 'j1', ...(data as object) }));
   const prisma = {
     journalEntry: {
       findFirst: jest.fn().mockResolvedValue(journalRow),
-      update: jest.fn().mockImplementation(({ data }: { data: unknown }) => Promise.resolve({ id: 'j1', ...(data as object) })),
+      findUniqueOrThrow: jest.fn().mockResolvedValue(journalRow),
+      update,
+      // Status moves are guarded (GL-J); recorded through `update` so the assertions read one place.
+      updateMany: jest.fn().mockImplementation((args: unknown) => update(args).then(() => ({ count: 1 }))),
     },
     journalLine: {
       aggregate: jest.fn().mockResolvedValue({ _sum: { debitAmount: 100 } }),
+      findMany: jest.fn().mockResolvedValue(journalRow.lines),
     },
     $transaction: jest.fn().mockImplementation((fn: (t: unknown) => unknown) => fn(tx)),
   };
 
   const tenancy = { getClient: () => prisma } as never;
-  const journalRepo = {} as never;
+  const usable = { code: 'x', name: 'x', active: true, postingAllowed: true, control: false, systemOnly: false };
+  const journalRepo = { accountFacts: jest.fn().mockResolvedValue(new Map([['a-dr', usable], ['a-cr', usable]])) } as never;
   const sequenceRepo = { ensureSequence: jest.fn() } as never;
   const postingPort = {
     post: jest.fn().mockResolvedValue({ journalEntryId: 'je-1', journalNumber: 'JE-1' }),

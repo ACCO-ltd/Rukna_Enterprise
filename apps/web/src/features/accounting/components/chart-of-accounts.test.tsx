@@ -3,8 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
-import { chooseOption } from '@/test/choose-option';
-import { getAccountingSetupStatus, listAccounts } from '@/features/accounting/api/accounting-api';
+import { getAccountingSetupStatus, getTrialBalance, listAccounts, setAccountStatus } from '@/features/accounting/api/accounting-api';
 import type { Account, AccountVersion } from '@/features/accounting/types';
 
 import { ChartOfAccounts } from './chart-of-accounts';
@@ -12,7 +11,17 @@ import { ChartOfAccounts } from './chart-of-accounts';
 vi.mock('@/features/accounting/api/accounting-api', () => ({
   listAccounts: vi.fn(),
   getAccountingSetupStatus: vi.fn(),
+  getTrialBalance: vi.fn(),
+  setAccountStatus: vi.fn(),
 }));
+vi.mock('next/link', () => ({
+  default: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) => (
+    <a href={href} {...props}>{children}</a>
+  ),
+}));
+
+/** The desktop table for one class (the phone list repeats each row). */
+const table = (name: string) => screen.findByRole('table', { name });
 
 const nav = vi.hoisted(() => ({ searchParams: new URLSearchParams(), replace: vi.fn() }));
 vi.mock('next/navigation', () => ({
@@ -89,18 +98,21 @@ beforeEach(() => {
   });
   vi.mocked(listAccounts).mockReset();
   vi.mocked(listAccounts).mockResolvedValue([account(), apControl()]);
+  vi.mocked(getTrialBalance).mockReset();
+  vi.mocked(getTrialBalance).mockResolvedValue({ lines: [] } as never);
 });
 
 describe('ChartOfAccounts', () => {
   it('lists accounts by code with their name', async () => {
     renderWithProviders(<ChartOfAccounts />);
 
-    expect(await screen.findByText('10100')).toBeInTheDocument();
-    expect(screen.getByText('Salaam Bank')).toBeInTheDocument();
-    expect(screen.getByText('20000')).toBeInTheDocument();
+    const assets = await table('Assets');
+    expect(within(assets).getByText('10100')).toBeInTheDocument();
+    expect(within(assets).getByText('Salaam Bank')).toBeInTheDocument();
+    expect(within(await table('Liabilities')).getByText('20000')).toBeInTheDocument();
   });
 
-  it('counts what is shown', async () => {
+  it('counts the accounts', async () => {
     renderWithProviders(<ChartOfAccounts />);
     expect(await screen.findByText('2 accounts')).toBeInTheDocument();
   });
@@ -110,12 +122,48 @@ describe('ChartOfAccounts', () => {
    * is reserved for the posting engine, and someone wondering why their journal will not
    * accept it needs that difference stated rather than a bare "blocked".
    */
-  it('marks a control account distinctly from an ordinary one', async () => {
+  it('marks an account the system keeps distinctly from an ordinary one', async () => {
     renderWithProviders(<ChartOfAccounts />);
 
-    await screen.findByText('10100');
-    expect(screen.getByText('Blocked')).toBeInTheDocument();
-    expect(screen.getByText('System or approved adjustment')).toBeInTheDocument();
+    expect(within(await table('Liabilities')).getByText('System')).toBeInTheDocument();
+    expect(within(await table('Assets')).queryByText('System')).not.toBeInTheDocument();
+  });
+
+  it('nests accounts under their heading, which adds them up, with a total for the class', async () => {
+    vi.mocked(listAccounts).mockResolvedValue([
+      account({ id: 'h', code: '10000', versions: [version({ accountId: 'h', name: 'Current assets', isPostingAllowed: false, controlPostingPolicy: 'UNRESTRICTED' })] }),
+      account({ id: 'b', code: '10100', versions: [version({ accountId: 'b', parentAccountId: 'h' })] }),
+      account({ id: 'c', code: '10900', versions: [version({ accountId: 'c', name: 'Petty cash', parentAccountId: 'h' })] }),
+    ]);
+    vi.mocked(getTrialBalance).mockResolvedValue({
+      lines: [
+        { accountId: 'b', closingDebit: '2521.00', closingCredit: '0.00' },
+        { accountId: 'c', closingDebit: '550.00', closingCredit: '0.00' },
+      ],
+    } as never);
+    renderWithProviders(<ChartOfAccounts />);
+    const assets = await table('Assets');
+    expect(await within(assets).findByRole('link', { name: '$2,521.00' })).toHaveAttribute('href', '/finance/accounting/ledger?accountId=b');
+    // The heading and the class total both read the sum.
+    expect(within(assets).getAllByText('$3,071.00')).toHaveLength(2);
+    expect(within(assets).getByText('Total assets')).toBeInTheDocument();
+  });
+
+  it('hides an inactive account until asked, and makes an account inactive', async () => {
+    const user = userEvent.setup();
+    vi.mocked(listAccounts).mockResolvedValue([account(), account({ id: 'old', code: '10200', status: 'INACTIVE', versions: [version({ accountId: 'old', name: 'Old bank' })] })]);
+    vi.mocked(setAccountStatus).mockResolvedValue(account({ status: 'INACTIVE' }));
+    renderWithProviders(<ChartOfAccounts />, { permissions: ['view:accounting', 'manage:accounting'] });
+    const assets = await table('Assets');
+    expect(within(assets).queryByText('Old bank')).not.toBeInTheDocument();
+    expect(screen.getByText('1 account · 1 inactive')).toBeInTheDocument();
+    await user.click(screen.getByLabelText('Show inactive'));
+    expect(within(await table('Assets')).getByText('Old bank')).toBeInTheDocument();
+
+    await user.click(within(await table('Assets')).getByRole('button', { name: 'Actions for account 10100' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Make inactive' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Make inactive' }));
+    expect(vi.mocked(setAccountStatus)).toHaveBeenCalledWith('acc-1', 'INACTIVE');
   });
 
   it('filters by code', async () => {
@@ -125,7 +173,7 @@ describe('ChartOfAccounts', () => {
     await user.type(await screen.findByLabelText('Search accounts'), '200');
 
     expect(screen.queryByText('Salaam Bank')).not.toBeInTheDocument();
-    expect(await screen.findByText('1 account')).toBeInTheDocument();
+    expect(within(await table('Liabilities')).getByText('20000')).toBeInTheDocument();
   });
 
   it('filters by name', async () => {
@@ -134,7 +182,7 @@ describe('ChartOfAccounts', () => {
 
     await user.type(await screen.findByLabelText('Search accounts'), 'payable');
 
-    expect(screen.getByText('Accounts Payable')).toBeInTheDocument();
+    expect(within(await table('Liabilities')).getByText('Accounts Payable')).toBeInTheDocument();
     expect(screen.queryByText('Salaam Bank')).not.toBeInTheDocument();
   });
 
@@ -142,10 +190,10 @@ describe('ChartOfAccounts', () => {
     const user = userEvent.setup();
     renderWithProviders(<ChartOfAccounts />);
 
-    await screen.findByText('10100');
-    await chooseOption(user, screen.getByLabelText('Account class'), 'LIABILITY');
+    await table('Assets');
+    await user.click(screen.getByRole('tab', { name: 'Liabilities' }));
 
-    expect(screen.getByText('Accounts Payable')).toBeInTheDocument();
+    expect(within(await table('Liabilities')).getByText('Accounts Payable')).toBeInTheDocument();
     expect(screen.queryByText('Salaam Bank')).not.toBeInTheDocument();
   });
 
@@ -157,8 +205,8 @@ describe('ChartOfAccounts', () => {
 
     expect(screen.getByText('No account matches this search.')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Clear filters' }));
-    expect(await screen.findByText('Salaam Bank')).toBeInTheDocument();
+    await user.clear(screen.getByLabelText('Search accounts'));
+    expect(within(await table('Assets')).getByText('Salaam Bank')).toBeInTheDocument();
   });
 
   it('distinguishes an unseeded chart from a failed load', async () => {
@@ -166,7 +214,7 @@ describe('ChartOfAccounts', () => {
     renderWithProviders(<ChartOfAccounts />);
 
     expect(await screen.findByText('No accounts yet.')).toBeInTheDocument();
-    expect(screen.getByText(/accounting has not been set up/)).toBeInTheDocument();
+    expect(screen.getByText(/Setting up accounting installs/)).toBeInTheDocument();
   });
 
   /** ADR-040: the old copy claimed the chart "is seeded when the organisation is provisioned". */
@@ -221,7 +269,7 @@ describe('ChartOfAccounts', () => {
       permissions: ['view:accounting', 'manage:accounting'],
     });
 
-    await screen.findByText('10100');
+    await table('Assets');
     await waitFor(() => expect(getAccountingSetupStatus).toHaveBeenCalled());
     expect(screen.queryByRole('dialog', { name: 'Set up accounting' })).not.toBeInTheDocument();
   });
@@ -267,6 +315,6 @@ describe('ChartOfAccounts', () => {
 
     renderWithProviders(<ChartOfAccounts />);
 
-    expect(await screen.findByText('No version on record')).toBeInTheDocument();
+    expect(within(await table('Assets')).getByText('No version on record')).toBeInTheDocument();
   });
 });

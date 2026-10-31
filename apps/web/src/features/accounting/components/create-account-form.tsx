@@ -57,7 +57,8 @@ import { ApiError } from '@/lib/api-client';
 import { accountName, currentVersion } from '../account-display';
 import {
   ACCOUNT_CLASSES,
-  ACCOUNT_SUBTYPE_GROUPS,
+  headingCandidates,
+  subtypeGroupsFor,
   CONTROL_POSTING_POLICIES,
   SUBLEDGER_TYPES,
   accountDraftProblems,
@@ -108,12 +109,10 @@ export function CreateAccountForm({ title, onDone }: { title: string; onDone: ()
   const problems = [...accountDraftProblems(draft), ...(missingParent ? ['parent' as const] : [])];
   const serverError = create.error instanceof ApiError ? create.error.message : null;
 
-  // Any active account can be a parent; listed by code, the order a chart is read in.
+  // GL-C — an active heading of the chosen class; listed by code, the order a chart is read in.
   const parentOptions = useMemo<ComboboxOption[]>(
     () =>
-      (accounts.data ?? [])
-        .filter((account) => account.status === 'ACTIVE')
-        .sort((a, b) => a.code.localeCompare(b.code))
+      headingCandidates(accounts.data ?? [], draft.accountClass)
         .map((account) => {
           const version = currentVersion(account);
           return {
@@ -122,7 +121,7 @@ export function CreateAccountForm({ title, onDone }: { title: string; onDone: ()
             hint: version ? tClass(version.accountClass) : undefined,
           };
         }),
-    [accounts.data, tClass],
+    [accounts.data, tClass, draft.accountClass],
   );
 
   function patch(next: Partial<AccountDraft>) {
@@ -133,6 +132,10 @@ export function CreateAccountForm({ title, onDone }: { title: string; onDone: ()
   function chooseClass(accountClass: AccountClass | '') {
     patch({
       accountClass,
+      // A subtype from another class would be refused; clear it.
+      ...(accountClass && draft.accountSubtype && !subtypeGroupsFor(accountClass).some((g) => g.subtypes.includes(draft.accountSubtype))
+        ? { accountSubtype: '' }
+        : {}),
       ...(accountClass && !draft.normalBalance
         ? { normalBalance: conventionalBalance(accountClass) }
         : {}),
@@ -248,7 +251,7 @@ export function CreateAccountForm({ title, onDone }: { title: string; onDone: ()
                 <option value="" disabled>
                   —
                 </option>
-                {ACCOUNT_SUBTYPE_GROUPS.map(({ group, subtypes }) => (
+                {subtypeGroupsFor(draft.accountClass).map(({ group, subtypes }) => (
                   <optgroup key={group} label={t(`subtypeGroup.${group}`)}>
                     {subtypes.map((subtype) => (
                       <option key={subtype} value={subtype}>

@@ -1,5 +1,6 @@
 import { fromMinorUnits, toMinorUnits } from '@/lib/money';
 
+import { journalHref, sourceDocumentHref } from './journal-source';
 import type { BankAccount, BankAccountKind, LedgerLine } from './types';
 
 /**
@@ -52,23 +53,5 @@ export function moneyInOut(line: Pick<LedgerLine, 'debitAmount' | 'creditAmount'
 
 /** The screen a bank ledger line came from; the journal itself when there is no better one. */
 export function ledgerLineHref(line: Pick<LedgerLine, 'sourceDocumentType' | 'sourceDocumentId' | 'journalEntryId'>): string {
-  const id = line.sourceDocumentId;
-  // Reversals carry `reversal-<id>`: they open the document they reversed.
-  const own = id?.startsWith('reversal-') ? id.slice('reversal-'.length) : id;
-  switch (line.sourceDocumentType) {
-    case 'SUPPLIER_PAYMENT':
-      return own ? `/finance/accounting/payments/${own}` : journal(line.journalEntryId);
-    case 'PAYMENT_RECEIPT':
-      return own ? `/receipts/${own}` : journal(line.journalEntryId);
-    case 'SUPPLIER_BILL':
-      return own ? `/finance/accounting/bills/${own}` : journal(line.journalEntryId);
-    case 'CLIENT_INVOICE':
-      return own ? `/finance/accounting/invoices/${own}` : journal(line.journalEntryId);
-    case 'BANK_TRANSFER':
-      return own ? `/finance/accounting/transfers?highlight=${own}` : journal(line.journalEntryId);
-    default:
-      return journal(line.journalEntryId);
-  }
+  return sourceDocumentHref(line.sourceDocumentType, line.sourceDocumentId) ?? journalHref(line.journalEntryId);
 }
-
-const journal = (id: string) => `/finance/accounting/journals/${id}`;

@@ -21,6 +21,15 @@ import {
   throwIfGated,
 } from '../../../../platform/workflows/application/command-governance.service.js';
 import type { GovernedEntity } from '@erp/types';
+import {
+  CANCELLABLE_STATUSES,
+  JOURNAL_CURRENCY,
+  journalAccountProblem,
+  journalDay,
+  journalProblem,
+  reversalDateProblem,
+  type JournalFacts,
+} from '../domain/manual-journal-rules.js';
 
 // The manual-journal governed entity name. Registering it in the shared `GovernedEntity`
 // union lives in `packages/types` (owned by the parallel access-governance effort), so we
@@ -42,7 +51,7 @@ export interface CreateManualJournalDto {
   accountingDate: string;
   documentDate?: string;
   description: string;
-  currencyCode: string;
+  currencyCode?: string;
   lines: ManualJournalLineDto[];
   /** G-2 — an accrual reverses itself on this date when it posts. */
   autoReverseOn?: string;
@@ -66,18 +75,6 @@ export interface ReverseManualJournalDto {
   journalId: string;
   reversalDate: string;
   reason: string;
-}
-
-/** G-2 — an automatic reversal must fall after the journal it reverses. */
-function autoReverseDate(dto: CreateManualJournalDto): Date | null {
-  if (!dto.autoReverseOn) return null;
-  if (dto.autoReverseOn.slice(0, 10) <= dto.accountingDate.slice(0, 10)) {
-    throw new BadRequestException({
-      errorCode: 'AUTO_REVERSE_DATE_INVALID',
-      message: 'The automatic reversal must be dated after the journal — usually the first day of the next month.',
-    });
-  }
-  return new Date(dto.autoReverseOn.slice(0, 10) + 'T00:00:00.000Z');
 }
 
 /** A draft journal line as typed; account snapshots are taken when the journal posts. */
@@ -114,6 +111,7 @@ export class ManualJournalService {
     const prisma = this.tenancyService.getClient();
     const { activeOrganizationId: orgId, userId } = identity;
 
+    await this.assertWritable(prisma, orgId, dto);
     // Ensure sequence exists for manual journals
     await this.sequenceRepo.ensureSequence(prisma as never, orgId, 'JOURNAL_ENTRY', 'JE-');
 
@@ -123,11 +121,7 @@ export class ManualJournalService {
         journalCategory: 'GENERAL',
         entryPurpose: 'NORMAL',
         status: 'DRAFT',
-        documentDate: new Date(dto.documentDate ?? dto.accountingDate),
-        accountingDate: new Date(dto.accountingDate),
-        description: dto.description,
-        currencyCode: dto.currencyCode,
-        autoReverseOn: autoReverseDate(dto),
+        ...this.headerData(dto),
         sourceDocumentType: 'MANUAL_JOURNAL',
         sourceDocumentId: `draft-${Date.now()}`,
         accountingEventId: null,
@@ -164,6 +158,7 @@ export class ManualJournalService {
         message: 'Only the person who prepared this journal can edit it.',
       });
     }
+    await this.assertWritable(prisma, orgId, dto);
 
     return prisma.$transaction(async (tx) => {
       // Guarded on the status read above, so a concurrent submit or approval wins.
@@ -171,11 +166,7 @@ export class ManualJournalService {
         where: { id: journal.id, status: journal.status },
         data: {
           status: 'DRAFT',
-          documentDate: new Date(dto.documentDate ?? dto.accountingDate),
-          accountingDate: new Date(dto.accountingDate),
-          description: dto.description,
-          currencyCode: dto.currencyCode,
-          autoReverseOn: autoReverseDate(dto),
+          ...this.headerData(dto),
         },
       });
       if (claimed.count !== 1) throw new ConflictException('The journal changed while it was being edited; reload and retry.');
@@ -188,6 +179,14 @@ export class ManualJournalService {
   async submit(identity: RequestIdentity, journalId: string) {
     const prisma = this.tenancyService.getClient();
     const journal = await this.requireDraft(prisma, identity.activeOrganizationId, journalId);
+    // A draft saved before these rules existed, or whose account has since become a heading or
+    // gone inactive, is stopped here rather than in the approver's queue.
+    const lines = await prisma.journalLine.findMany({ where: { journalEntryId: journal.id }, orderBy: { lineNumber: 'asc' } });
+    await this.assertWritable(prisma, identity.activeOrganizationId, {
+      accountingDate: journal.accountingDate.toISOString().slice(0, 10),
+      currencyCode: journal.currencyCode,
+      lines: lines.map((l) => ({ accountId: l.accountId, debitAmount: Number(l.debitAmount), creditAmount: Number(l.creditAmount) })),
+    });
 
     // Governance seam (ADR-011). When an active binding exists for this manual-journal
     // transition, the seam opens an approval instance and this throws 409 with the
@@ -207,14 +206,16 @@ export class ManualJournalService {
       'Manual journal submission requires workflow approval.',
     );
 
-    return prisma.journalEntry.update({
-      where: { id: journal.id },
+    const moved = await prisma.journalEntry.updateMany({
+      where: { id: journal.id, status: 'DRAFT' },
       data: {
         status: 'SUBMITTED',
         submittedBy: identity.userId,
         submittedAt: new Date(),
       },
     });
+    this.changed(moved.count);
+    return prisma.journalEntry.findUniqueOrThrow({ where: { id: journal.id } });
   }
 
   async approve(identity: RequestIdentity, dto: ApproveManualJournalDto) {
@@ -240,17 +241,23 @@ export class ManualJournalService {
     }
 
     if (!dto.approved) {
-      if (!dto.rejectionReason) throw new BadRequestException('rejectionReason is required when rejecting');
-      return prisma.journalEntry.update({
-        where: { id: journal.id },
-        data: { status: 'REJECTED', rejectedBy: userId, rejectedAt: new Date(), rejectionReason: dto.rejectionReason },
+      if (!dto.rejectionReason?.trim()) {
+        throw new BadRequestException({ errorCode: 'REASON_REQUIRED', message: 'Say why the journal is being returned.' });
+      }
+      const rejected = await prisma.journalEntry.updateMany({
+        where: { id: journal.id, status: 'SUBMITTED' },
+        data: { status: 'REJECTED', rejectedBy: userId, rejectedAt: new Date(), rejectionReason: dto.rejectionReason.trim() },
       });
+      this.changed(rejected.count);
+      return prisma.journalEntry.findUniqueOrThrow({ where: { id: journal.id } });
     }
 
-    return prisma.journalEntry.update({
-      where: { id: journal.id },
+    const approved = await prisma.journalEntry.updateMany({
+      where: { id: journal.id, status: 'SUBMITTED' },
       data: { status: 'APPROVED', approvedBy: userId, approvedAt: new Date() },
     });
+    this.changed(approved.count);
+    return prisma.journalEntry.findUniqueOrThrow({ where: { id: journal.id } });
   }
 
   async post(identity: RequestIdentity, journalId: string) {
@@ -458,7 +465,9 @@ export class ManualJournalService {
       );
     }
 
-    const reversalDate = new Date(dto.reversalDate);
+    const dateProblem = reversalDateProblem(dto.reversalDate, journal.accountingDate);
+    if (dateProblem) throw new BadRequestException(dateProblem);
+    const reversalDate = journalDay(dto.reversalDate)!;
 
     return prisma.$transaction(async (tx) => {
       const result = await this.postingPort.post(
@@ -524,11 +533,107 @@ export class ManualJournalService {
     });
   }
 
+  /**
+   * One journal with who did what by name, the journals around it (its reversal, what it reverses)
+   * and the person who prepared it — for a posted manual journal that is the draft's author, not
+   * whoever pressed Post.
+   */
   async findById(identity: RequestIdentity, id: string) {
     const prisma = this.tenancyService.getClient();
-    const journal = await this.journalRepo.findById(prisma, identity.activeOrganizationId, id);
-    if (!journal) throw new NotFoundException(`Journal ${id} not found`);
-    return journal;
+    const orgId = identity.activeOrganizationId;
+    const journal = await this.journalRepo.findById(prisma, orgId, id);
+    if (!journal) throw new NotFoundException({ errorCode: 'JOURNAL_NOT_FOUND', message: 'This journal does not exist.' });
+    const related = await this.journalRepo.related(prisma, orgId, journal);
+    const preparedBy = related.draft?.createdBy ?? journal.createdBy;
+    const names = await this.journalRepo.userNames(prisma, [
+      preparedBy, journal.createdBy, journal.submittedBy, journal.approvedBy, journal.postedBy,
+      journal.rejectedBy, journal.reversedBy, journal.cancelledBy,
+    ]);
+    const name = (u: string | null | undefined) => (u ? (names.get(u) ?? null) : null);
+    return {
+      ...journal,
+      preparedBy,
+      preparedByName: name(preparedBy),
+      submittedByName: name(journal.submittedBy),
+      approvedByName: name(journal.approvedBy),
+      postedByName: name(journal.postedBy ?? (journal.status === 'POSTED' ? journal.createdBy : null)),
+      rejectedByName: name(journal.rejectedBy),
+      reversedByName: name(journal.reversedBy),
+      cancelledByName: name(journal.cancelledBy),
+      reversals: related.reversals,
+      reversalOf: related.reversalOf,
+    };
+  }
+
+  /**
+   * GL-J — set aside a journal that has not reached the ledger (a draft, one waiting for approval,
+   * one approved but not posted, one returned). Nothing posts; the row stays, marked, with why.
+   */
+  async cancel(identity: RequestIdentity, journalId: string, reason: string) {
+    const prisma = this.tenancyService.getClient();
+    const { activeOrganizationId: orgId, userId } = identity;
+    if (!reason?.trim()) throw new BadRequestException({ errorCode: 'REASON_REQUIRED', message: 'Say why the journal is being cancelled.' });
+    const journal = await prisma.journalEntry.findFirst({
+      where: { id: journalId, organizationId: orgId, sourceDocumentType: 'MANUAL_JOURNAL' },
+      select: { id: true, status: true },
+    });
+    if (!journal) throw new NotFoundException({ errorCode: 'JOURNAL_NOT_FOUND', message: 'This journal does not exist.' });
+    if (!(CANCELLABLE_STATUSES as readonly string[]).includes(journal.status)) {
+      throw new ConflictException({
+        errorCode: 'JOURNAL_NOT_CANCELLABLE',
+        message: journal.status === 'POSTED'
+          ? 'A posted journal is in the ledger; reverse it instead.'
+          : 'This journal is already cancelled.',
+      });
+    }
+    const moved = await prisma.journalEntry.updateMany({
+      where: { id: journal.id, status: journal.status },
+      data: { status: 'CANCELLED', cancelledBy: userId, cancelledAt: new Date(), cancellationReason: reason.trim() },
+    });
+    this.changed(moved.count);
+    return this.findById(identity, journal.id);
+  }
+
+  /** GL-J — every posted entry, whatever posted it, dated in the range (the ledger's day book). */
+  async entries(identity: RequestIdentity, fromDate: string, toDate: string) {
+    const from = journalDay(fromDate);
+    const to = journalDay(toDate);
+    if (!from || !to) throw new BadRequestException({ errorCode: 'JOURNAL_DATE_INVALID', message: 'fromDate and toDate must be real dates written YYYY-MM-DD.' });
+    if (from > to) throw new BadRequestException({ errorCode: 'DATE_RANGE_INVALID', message: 'fromDate must not be after toDate.' });
+    return this.journalRepo.postedEntries(this.tenancyService.getClient(), identity.activeOrganizationId, from, to);
+  }
+
+  private headerData(dto: CreateManualJournalDto) {
+    const accountingDate = journalDay(dto.accountingDate)!;
+    return {
+      accountingDate,
+      documentDate: journalDay(dto.documentDate) ?? accountingDate,
+      description: dto.description.trim(),
+      currencyCode: JOURNAL_CURRENCY,
+      autoReverseOn: journalDay(dto.autoReverseOn),
+    };
+  }
+
+  /** The journal as written, and every account it names, must be usable — or a 400 saying which line. */
+  private async assertWritable(
+    prisma: ReturnType<TenancyService['getClient']>,
+    organizationId: string,
+    dto: Omit<JournalFacts, 'lines'> & { lines: readonly { accountId: string; debitAmount?: number | null; creditAmount?: number | null }[] },
+  ) {
+    const problem = journalProblem(dto);
+    if (problem) throw new BadRequestException(problem);
+    const facts = await this.journalRepo.accountFacts(prisma, organizationId, dto.lines.map((l) => l.accountId), journalDay(dto.accountingDate)!);
+    for (const [i, line] of dto.lines.entries()) {
+      const accountProblem = journalAccountProblem(i + 1, facts.get(line.accountId) ?? null);
+      if (accountProblem) throw new BadRequestException(accountProblem);
+    }
+  }
+
+  /** A guarded status move that matched nothing: someone else acted on the journal first. */
+  private changed(count: number) {
+    if (count !== 1) {
+      throw new ConflictException({ errorCode: 'JOURNAL_CHANGED', message: 'The journal changed while you were working on it; reload and try again.' });
+    }
   }
 
   /**

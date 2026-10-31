@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
 import { RequirePermissions } from '../../../../common/decorators/require-permissions.decorator.js';
@@ -58,6 +58,22 @@ export class AccountController {
     @Body() dto: UpdateAccountDto,
   ) {
     return this.accountService.update(identity, id, dto);
+  }
+
+  @Post(':id/deactivate')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'Make an account inactive: no balance, no active accounts under it, nothing posting to it' })
+  deactivate(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.accountService.setStatus(identity, id, 'INACTIVE');
+  }
+
+  @Post(':id/reactivate')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'Make an inactive account active again (its heading must be active)' })
+  reactivate(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.accountService.setStatus(identity, id, 'ACTIVE');
   }
 
   @Post('import')

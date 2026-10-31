@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Ellipsis, ListTree } from 'lucide-react';
+import { Ellipsis, ListTree, Search } from 'lucide-react';
 import {
   Button,
   DropdownMenu,
@@ -11,20 +11,24 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   EmptyState,
-  FilterBar,
-  FilterField,
-  Select,
+  Input,
+  SkeletonTable,
+  StatusPill,
+  cn,
 } from '@erp/ui';
 
-import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
+import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
+import { LoadError } from '@/components/load-error';
+import { ListPageHeader } from '@/components/layout/list-page-header';
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
+import { ApiError } from '@/lib/api-client';
 
 import { accountName, currentVersion } from '../account-display';
-import { useAccountingSetupStatus, useAccounts, useTrialBalance } from '../hooks/use-accounting';
+import { useAccountingSetupStatus, useAccounts, useSetAccountStatus, useTrialBalance } from '../hooks/use-accounting';
+import { chartSections, minorToText, searchSections, type ChartRow } from '../coa-tree';
 import Link from 'next/link';
 import { formatMoney } from '@/lib/format';
 import type { Account, AccountClass } from '../types';
-import { AccountClassBadge, NormalBalanceLabel, PostingPolicyBadge } from './account-badges';
 import { AccountingSetupDialog } from './accounting-setup-dialog';
 import { PartialSetupNotice } from './partial-setup-notice';
 import { CreateAccountForm } from './create-account-form';
@@ -42,15 +46,14 @@ const ACCOUNT_CLASSES: AccountClass[] = [
 
 export function ChartOfAccounts() {
   const t = useTranslations('accounting.chartOfAccounts');
-  const tClass = useTranslations('accounting.accountClass');
 
   const accounts = useAccounts();
   // G-3 — each account's balance today, from the trial balance (posted lines only).
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const trial = useTrialBalance(today, false);
   const balanceOf = useMemo(() => {
-    const map = new Map<string, { debit: number; credit: number }>();
-    for (const line of trial.data?.lines ?? []) map.set(line.accountId, { debit: Number(line.closingDebit), credit: Number(line.closingCredit) });
+    const map = new Map<string, { debit: string; credit: string }>();
+    for (const line of trial.data?.lines ?? []) map.set(line.accountId, { debit: line.closingDebit, credit: line.closingCredit });
     return map;
   }, [trial.data]);
 
@@ -90,135 +93,71 @@ export function ChartOfAccounts() {
     }
   }
 
-  // Filtered in the browser: `GET /accounts` takes no query parameters and a chart of accounts
-  // is a few hundred rows, so the whole thing is already here. Text search (code, name,
-  // subtype) is the grid's own; this only narrows by class.
-  const visible = useMemo(() => {
-    const all = accounts.data ?? [];
-    if (!accountClass) return all;
-    return all.filter((account) => currentVersion(account)?.accountClass === accountClass);
-  }, [accounts.data, accountClass]);
+  const [search, setSearch] = useState('');
+  const [showInactive, setShowInactive] = useState(false);
+  const [statusFor, setStatusFor] = useState<Account | null>(null);
+  const setStatus = useSetAccountStatus();
+
+  const all = useMemo(() => accounts.data ?? [], [accounts.data]);
+  const sections = useMemo(() => {
+    const built = chartSections(all, balanceOf, { showInactive });
+    const narrowed = accountClass ? built.filter((s) => s.accountClass === accountClass) : built;
+    return searchSections(narrowed, search, (a) => accountName(a));
+  }, [all, balanceOf, showInactive, accountClass, search]);
+  const inactiveCount = all.filter((a) => a.status !== 'ACTIVE').length;
 
   // The subtype's plain name ("Cash and bank"), not its code.
   const subtypeLabel = (subtype: string | undefined) =>
     subtype ? (t.has(`create.subtypeName.${subtype}`) ? t(`create.subtypeName.${subtype}`) : subtype) : '';
-  // On the account's normal side: a credit-normal account (payables, income) reads positive when in credit.
-  const balanceText = (account: Account) => {
-    const b = balanceOf.get(account.id);
-    if (!b || (b.debit === 0 && b.credit === 0)) return '';
-    const net = account.normalBalance === 'CREDIT' ? b.credit - b.debit : b.debit - b.credit;
-    return formatMoney(net.toFixed(2), 'USD') ?? net.toFixed(2);
-  };
+  const usd = (minor: number) => (minor === 0 ? '' : (formatMoney(minorToText(minor), 'USD') ?? minorToText(minor)));
 
-  const columns: GridColumn<Account>[] = [
-    {
-      key: 'code',
-      header: t('colCode'),
-      sticky: true,
-      sortable: true,
-      plainValue: (account) => account.code,
-      render: (account) => <span className="font-mono text-caption tabular-nums">{account.code}</span>,
-    },
-    {
-      key: 'name',
-      header: t('colName'),
-      sortable: true,
-      plainValue: (account) => (currentVersion(account) ? accountName(account) : ''),
-      render: (account, ctx) => {
-        const version = currentVersion(account);
-        return version ? (
-          <span className="text-sm text-foreground">{accountName(account, ctx.locale)}</span>
-        ) : (
-          // An account with no version is a broken record, not an empty name — saying so is
-          // more useful than rendering a blank cell.
-          <span className="text-sm italic text-muted-foreground">{t('noVersion')}</span>
-        );
-      },
-    },
-    {
-      key: 'class',
-      header: t('colClass'),
-      render: (account) => {
-        const version = currentVersion(account);
-        return version ? <AccountClassBadge accountClass={version.accountClass} /> : null;
-      },
-    },
-    {
-      key: 'subtype',
-      header: t('colSubtype'),
-      plainValue: (account) => subtypeLabel(currentVersion(account)?.accountSubtype),
-      render: (account) => (
-        <span className="text-xs text-muted-foreground">{subtypeLabel(currentVersion(account)?.accountSubtype) || '—'}</span>
-      ),
-    },
-    {
-      key: 'balance',
-      header: t('colBalance'),
-      numeric: true,
-      plainValue: (account) => balanceText(account),
-      render: (account) => {
-        const text = balanceText(account);
-        return text ? (
-          <Link href={`/finance/accounting/ledger?accountId=${account.id}`} className="tabular-nums text-brand-primary underline-offset-2 hover:underline" onClick={(e) => e.stopPropagation()}>
-            {text}
-          </Link>
-        ) : (
-          <span className="text-muted-foreground">—</span>
-        );
-      },
-    },
-    {
-      key: 'normalBalance',
-      header: t('colNormalBalance'),
-      render: (account) => <NormalBalanceLabel normalBalance={account.normalBalance} />,
-    },
-    {
-      key: 'posting',
-      header: t('colPosting'),
-      render: (account) => {
-        const version = currentVersion(account);
-        return version ? (
-          <PostingPolicyBadge
-            isPostingAllowed={version.isPostingAllowed}
-            isControlAccount={version.isControlAccount}
-            controlPostingPolicy={version.controlPostingPolicy}
-          />
-        ) : null;
-      },
-    },
-    // The row overflow menu. Present only when the user may manage the chart, and only for an
-    // account that has a version to edit — a broken versionless record has nothing to edit.
-    ...(mayManage
-      ? [
-          {
-            key: 'actions',
-            header: '',
-            render: (account: Account) =>
-              currentVersion(account) ? (
-                <div className="flex justify-end">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label={t('rowMenu', { code: account.code })}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <Ellipsis size={20} aria-hidden="true" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onSelect={() => setEditing(account)}>
-                        {t('edit.action')}
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              ) : null,
-          } satisfies GridColumn<Account>,
-        ]
-      : []),
-  ];
+  const rowMenu = (row: ChartRow) =>
+    mayManage && currentVersion(row.account) ? (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" aria-label={t('rowMenu', { code: row.account.code })}>
+            <Ellipsis size={20} aria-hidden="true" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onSelect={() => setEditing(row.account)}>{t('edit.action')}</DropdownMenuItem>
+          {!row.heading ? (
+            <DropdownMenuItem asChild>
+              <Link href={`/finance/accounting/ledger?accountId=${row.account.id}`}>{t('openLedger')}</Link>
+            </DropdownMenuItem>
+          ) : null}
+          {!row.systemKept ? (
+            <DropdownMenuItem onSelect={() => setStatusFor(row.account)}>
+              {row.account.status === 'ACTIVE' ? t('deactivate') : t('reactivate')}
+            </DropdownMenuItem>
+          ) : null}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    ) : null;
+
+  const nameCell = (row: ChartRow) => (
+    <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+      {currentVersion(row.account) ? (
+        <span className={cn('text-body-sm', row.heading ? 'font-semibold text-foreground' : 'text-foreground')}>
+          {accountName(row.account)}
+        </span>
+      ) : (
+        // A versionless account is a broken record, not an empty name.
+        <span className="text-body-sm italic text-muted-foreground">{t('noVersion')}</span>
+      )}
+      {row.systemKept ? <StatusPill tone="neutral">{t('tagSystem')}</StatusPill> : null}
+      {row.account.status !== 'ACTIVE' ? <StatusPill tone="historical">{t('tagInactive')}</StatusPill> : null}
+    </span>
+  );
+  const indent = ['ps-3', 'ps-8', 'ps-12', 'ps-16'];
+  const balanceCell = (row: ChartRow) =>
+    row.heading ? (
+      <span className="font-semibold tabular-nums">{usd(row.balanceMinor)}</span>
+    ) : row.balanceMinor !== 0 ? (
+      <Link href={`/finance/accounting/ledger?accountId=${row.account.id}`} className="tabular-nums text-brand-primary underline-offset-2 hover:underline">
+        {usd(row.balanceMinor)}
+      </Link>
+    ) : null;
 
   // Import sits beside New account: a fresh org brings in a whole chart at once, then maintains
   // it one account at a time.
@@ -232,6 +171,100 @@ export function ChartOfAccounts() {
       </Button>
     </div>
   ) : null;
+
+  const chart = (
+    <div className="min-w-0 overflow-hidden rounded-panel border border-border bg-surface">
+      <div className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3">
+        <label className="relative min-w-0 flex-1 sm:max-w-sm">
+          <span className="sr-only">{t('searchLabel')}</span>
+          <Search size={16} aria-hidden="true" className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('searchPlaceholder')} className="ps-10" />
+        </label>
+        <label className="flex min-h-10 items-center gap-2 text-body-sm text-muted-foreground">
+          <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} className="size-4" />
+          {t('showInactive')}
+        </label>
+      </div>
+      <div role="tablist" aria-label={t('classesLabel')} className="flex gap-1 overflow-x-auto border-b border-border px-3">
+        {(['', ...ACCOUNT_CLASSES] as const).map((c) => (
+          <button
+            key={c || 'all'}
+            type="button"
+            role="tab"
+            aria-selected={accountClass === c}
+            onClick={() => setAccountClass(c)}
+            className={cn(
+              'min-h-10 whitespace-nowrap border-b-2 px-3 text-body-sm font-medium',
+              accountClass === c ? 'border-brand-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {c ? t(`classSection.${c}`) : t('allClassesTab')}
+          </button>
+        ))}
+      </div>
+      {sections.length === 0 ? (
+        <p className="px-4 py-10 text-center text-body-sm text-muted-foreground">{t('noMatches')}</p>
+      ) : (
+        sections.map((section) => (
+          <section key={section.accountClass} aria-labelledby={`coa-${section.accountClass}`} className="border-b border-border last:border-b-0">
+            <h3 id={`coa-${section.accountClass}`} className="bg-surface-subtle px-4 py-2 text-caption font-semibold uppercase tracking-wide text-muted-foreground">
+              {t(`classSection.${section.accountClass}`)}
+            </h3>
+            <ul className="divide-y divide-border sm:hidden">
+              {section.rows.map((row) => (
+                <li key={row.account.id} className={cn('flex items-start justify-between gap-3 py-2.5 pe-2 ps-4', row.depth > 0 && 'ps-8')}>
+                  <span className="min-w-0">
+                    {nameCell(row)}
+                    <span className="block font-mono text-caption text-muted-foreground">{row.account.code}</span>
+                  </span>
+                  <span className="flex shrink-0 items-center gap-1 text-body-sm">
+                    {balanceCell(row)}
+                    {rowMenu(row)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <table className="hidden w-full table-fixed text-body-sm sm:table">
+              <caption className="sr-only">{t(`classSection.${section.accountClass}`)}</caption>
+              <thead>
+                <tr className="border-b border-border text-caption text-muted-foreground">
+                  <th scope="col" className="w-28 px-4 py-2 text-start font-medium">{t('colCode')}</th>
+                  <th scope="col" className="px-3 py-2 text-start font-medium">{t('colName')}</th>
+                  <th scope="col" className="hidden w-56 px-3 py-2 text-start font-medium lg:table-cell">{t('colSubtype')}</th>
+                  <th scope="col" className="w-40 px-3 py-2 text-end font-medium">{t('colBalance')}</th>
+                  <th scope="col" className="w-12 px-2 py-2"><span className="sr-only">{t('rowMenu', { code: '' })}</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                {section.rows.map((row) => (
+                  <tr key={row.account.id} className={cn('border-b border-border last:border-b-0', row.account.status !== 'ACTIVE' && 'text-muted-foreground')}>
+                    <td className="px-4 py-2 font-mono text-caption tabular-nums">{row.account.code}</td>
+                    <th scope="row" className={cn('px-3 py-2 text-start font-normal', indent[Math.min(row.depth, indent.length - 1)])}>
+                      {nameCell(row)}
+                    </th>
+                    <td className="hidden px-3 py-2 text-caption text-muted-foreground lg:table-cell">
+                      {row.heading ? '' : subtypeLabel(currentVersion(row.account)?.accountSubtype)}
+                    </td>
+                    <td className="px-3 py-2 text-end">{balanceCell(row)}</td>
+                    <td className="px-2 py-1 text-end">{rowMenu(row)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t border-border font-semibold">
+                  <th scope="row" colSpan={3} className="px-4 py-2 text-start">
+                    {t('classTotal', { name: t(`classSection.${section.accountClass}`).toLowerCase() })}
+                  </th>
+                  <td className="px-3 py-2 text-end tabular-nums">{usd(section.totalMinor) || formatMoney('0', 'USD')}</td>
+                  <td />
+                </tr>
+              </tfoot>
+            </table>
+          </section>
+        ))
+      )}
+    </div>
+  );
 
   return (
     <div className="space-y-6">
@@ -258,71 +291,61 @@ export function ChartOfAccounts() {
         />
       ) : null}
 
-      <PlatformDataGrid
-        columns={columns}
-        data={visible}
-        rowKey={(account) => account.id}
-        label={t('title')}
-        isLoading={accounts.isPending}
-        isError={accounts.isError}
-        // A failed load is not an empty chart: saying "No accounts yet" here would send an
-        // administrator to install a chart the organisation may already have.
-        errorMessage={t('loadFailed')}
-        onRetry={() => void accounts.refetch()}
-        emptyState={
-          (accounts.data?.length ?? 0) === 0 ? (
-            <EmptyState
-              icon={<ListTree size={36} aria-hidden="true" />}
-              title={t('empty')}
-              description={t('emptyHint')}
-              // ADR-040: an empty chart is set up from the template in one step — importing or
-              // adding accounts one by one cannot create the control accounts posting needs.
-              action={
-                mayManage ? (
-                  setupStatus.data?.canInstall ? (
-                    <Button type="button" onClick={() => setSettingUp(true)}>
-                      {t('setUp')}
-                    </Button>
-                  ) : setupStatus.data?.reason === 'PARTIAL_SETUP' ? (
-                    <div className="mx-auto max-w-prose text-start">
-                      <PartialSetupNotice records={setupStatus.data.existingRecords} />
-                    </div>
-                  ) : undefined
-                ) : (
-                  <p className="text-sm font-medium text-foreground">{t('emptyAdminOnly')}</p>
-                )
-              }
-            />
-          ) : undefined
-        }
-        searchLabel={t('searchLabel')}
-        searchPlaceholder={t('searchPlaceholder')}
-        noMatchMessage={t('noMatches')}
-        resultLabel={(count) => t('countLabel', { count })}
-        pagination={{ defaultPageSize: 50 }}
-        toolbarActions={createAction}
-        toolbarFilters={
-          <FilterBar>
-            <FilterField id="coa-class" label={t('filterByClass')}>
-              <Select
-                id="coa-class"
-                value={accountClass}
-                onChange={(value) => setAccountClass(value as AccountClass | '')}
-              >
-                <option value="">{t('allClasses')}</option>
-                {ACCOUNT_CLASSES.map((c) => (
-                  <option key={c} value={c}>
-                    {tClass(c)}
-                  </option>
-                ))}
-              </Select>
-            </FilterField>
-          </FilterBar>
-        }
-        onClearFilters={() => setAccountClass('')}
+      <ListPageHeader
+        title={t('title')}
+        summary={all.length > 0 ? t('summary', { count: all.length - inactiveCount, inactive: inactiveCount }) : undefined}
+        actions={createAction}
       />
+      {accounts.isError ? (
+        <LoadError message={t('loadFailed')} onRetry={() => void accounts.refetch()} />
+      ) : accounts.isPending ? (
+        <SkeletonTable rows={10} columns={4} label={t('title')} />
+      ) : all.length === 0 ? (
+        <EmptyState
+        icon={<ListTree size={36} aria-hidden="true" />}
+        title={t('empty')}
+        description={t('emptyHint')}
+        // ADR-040: an empty chart is set up from the template in one step — importing or
+        // adding accounts one by one cannot create the control accounts posting needs.
+        action={
+          mayManage ? (
+            setupStatus.data?.canInstall ? (
+              <Button type="button" onClick={() => setSettingUp(true)}>
+                {t('setUp')}
+              </Button>
+            ) : setupStatus.data?.reason === 'PARTIAL_SETUP' ? (
+              <div className="mx-auto max-w-prose text-start">
+                <PartialSetupNotice records={setupStatus.data.existingRecords} />
+              </div>
+            ) : undefined
+          ) : (
+            <p className="text-sm font-medium text-foreground">{t('emptyAdminOnly')}</p>
+          )
+        }
+            />
+      ) : (
+        chart
+      )}
 
-      <p className="max-w-prose text-xs text-muted-foreground">{t('versionNote')}</p>
+      {statusFor ? (
+        <ConfirmActionDialog
+          title={t(statusFor.status === 'ACTIVE' ? 'deactivateTitle' : 'reactivateTitle', { name: `${statusFor.code} ${accountName(statusFor)}` })}
+          description={t(statusFor.status === 'ACTIVE' ? 'deactivateBody' : 'reactivateBody')}
+          confirmLabel={statusFor.status === 'ACTIVE' ? t('deactivate') : t('reactivate')}
+          isPending={setStatus.isPending}
+          errorMessage={setStatus.isError ? (setStatus.error instanceof ApiError && setStatus.error.message ? setStatus.error.message : t('statusFailed')) : undefined}
+          onConfirm={() =>
+            setStatus.mutate(
+              { id: statusFor.id, status: statusFor.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE' },
+              { onSuccess: () => setStatusFor(null) },
+            )
+          }
+          onDismiss={() => {
+            setStatus.reset();
+            setStatusFor(null);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
