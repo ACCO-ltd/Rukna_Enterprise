@@ -41,8 +41,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 /**
  * Issue a credit note against an issued invoice — the only way to correct it once it is
  * numbered and posted. Create + post in one go: the note is numbered, journalled, and the
- * invoice balance falls by the amount plus sales tax at the invoice's own rate (applied by the
- * server; this dialog knows no rate). If posting fails after the note was created, a retry posts
+ * invoice balance falls by the amount. If posting fails after the note was created, a retry posts
  * that same note rather than raising a second one.
  *
  * A `FormDialog` (ADR-039), size `md`.
@@ -169,7 +168,7 @@ export function CreditNoteDialog({
           description={reasonError}
         />
 
-        <FormField htmlFor="cn-amount" label={t('amount')} hint={t('amountHint')} error={amountError}>
+        <FormField htmlFor="cn-amount" label={t('amount')} error={amountError}>
           <MoneyInput
             id="cn-amount"
             value={amount}

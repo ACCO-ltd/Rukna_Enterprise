@@ -367,10 +367,7 @@ export function ShellSection() {
                         </TableScroll>
                         <TotalsBlock
                           className="ms-auto max-w-sm"
-                          rows={[
-                            { label: 'Subtotal', value: <MoneyDisplay value="5660.00" /> },
-                            { label: 'Sales tax', value: <MoneyDisplay value="0" /> },
-                          ]}
+                          rows={[]}
                           total={{ label: 'Total', value: <MoneyDisplay value="5660.00" /> }}
                           amountDue={{ label: 'Amount due', value: <MoneyDisplay value="5660.00" /> }}
                         />

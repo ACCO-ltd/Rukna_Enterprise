@@ -7,7 +7,7 @@ import { existingRecordsList, type ExistingSetupRecord } from '../accounting-set
 
 /**
  * The sentence explaining why the one-step setup (ADR-040) is unavailable although the chart is
- * empty: the organisation already has tax codes, posting profiles, bank accounts or fiscal years,
+ * empty: the organisation already has posting profiles, bank accounts or fiscal years,
  * and the template cannot be installed over them (`PARTIAL_SETUP`).
  */
 export function usePartialSetupMessage(): (records: readonly ExistingSetupRecord[]) => string {

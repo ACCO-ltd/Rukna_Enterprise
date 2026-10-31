@@ -104,13 +104,11 @@
         "FIXED_ASSETS": "Fixed assets",
         "ACCUMULATED_DEPRECIATION": "Accumulated depreciation",
         "PREPAYMENTS": "Prepayments",
-        "VAT_INPUT_RECOVERABLE": "Sales tax input (recoverable)",
         "OTHER_CURRENT_ASSET": "Other current asset",
         "OTHER_NON_CURRENT_ASSET": "Other non-current asset",
         "ACCOUNTS_PAYABLE": "Accounts payable",
         "UNAPPLIED_CLIENT_RECEIPTS": "Unapplied client receipts",
         "CLIENT_ADVANCE_LIABILITY": "Client advance",
-        "VAT_OUTPUT_PAYABLE": "Sales tax output (payable)",
         "OTHER_CURRENT_LIABILITY": "Other current liability",
         "OTHER_NON_CURRENT_LIABILITY": "Other non-current liability",
         "SHARE_CAPITAL": "Share capital",
@@ -133,7 +131,7 @@
       "normalBalanceHint": "Set from the account class. Change it only for a contra account.",
       "contraWarning": "This is the opposite side to what the account class normally carries. That is correct for a contra account such as accumulated depreciation, and wrong for anything else — it inverts the account’s sign in every report while the trial balance still ties.",
       "postingPolicy": "Posting policy",
-      "postingPolicyHint": "A third policy — posting engine or CFO-approved adjustment — exists in the database and is used by the seeded bank and sales tax accounts, but the API does not accept it (issue A6). Bank and sales tax accounts created here cannot yet be given it.",
+      "postingPolicyHint": "A third policy — posting engine or CFO-approved adjustment — exists in the database and is used by the seeded bank accounts, but the API does not accept it (issue A6). Bank accounts created here cannot yet be given it.",
       "policy": {
         "UNRESTRICTED": "Unrestricted — manual journals may post here",
         "SYSTEM_ONLY": "System only — posting engine may post here"
@@ -732,7 +730,7 @@
     "actualCostHint": "Posted to the general ledger",
     "uncommittedBudget": "Uncommitted budget",
     "uncommittedBudgetHint": "Budget still free to spend",
-    "basisNote": "Certified is net of retention and advance recovery and excludes sales tax. Invoiced, received and outstanding include sales tax, so they are not directly comparable with certified."
+    "basisNote": "Certified is net of retention and advance recovery, so it is not directly comparable with invoiced, received and outstanding."
   },
   "balanceSheet": {
     "title": "Balance Sheet",
@@ -888,8 +886,6 @@
     "fieldInvoiceDate": "Invoice date",
     "fieldDueDate": "Due date",
     "fieldSubtotal": "Subtotal",
-    "fieldVat": "Sales tax",
-    "fieldVatRate": "Sales tax {rate}%",
     "fieldTotal": "Total",
     "fieldOutstanding": "Outstanding",
     "fieldDraftTotal": "Draft total",
@@ -951,13 +947,12 @@
       "colCredit": "Credit",
       "totals": "Totals",
       "confirm": "Post to GL",
-      "unbalanced": "This invoice does not balance — its total differs from its subtotal plus sales tax. Posting is blocked. Contact your administrator.",
+      "unbalanced": "This invoice does not balance — its total differs from its lines. Posting is blocked. Contact your administrator.",
       "notConfigured": "Cannot post — no account is configured as {role}. Ask your administrator to set one up.",
       "ambiguous": "Cannot post — {codes} are both configured as {role}. Exactly one is required. Ask your administrator to correct the chart of accounts.",
       "role": {
         "AR_CONTROL": "Accounts Receivable",
         "REVENUE": "Revenue",
-        "VAT_OUTPUT": "Output sales tax",
         "UNAPPLIED_RECEIPTS": "Unapplied Receipts",
         "AP_CONTROL": "Accounts Payable",
         "SUPPLIER_ADVANCE": "Supplier Advance",
@@ -1061,9 +1056,7 @@
       "colDescription": "Description",
       "colAmount": "Amount",
       "lineCard": "Line {n}",
-      "totalBeforeVat": "Amount before sales tax",
       "subtotal": "Subtotal",
-      "taxLine": "{name} ({rate}%)",
       "total": "Total",
       "amountsHidden": "Amounts are hidden for your role.",
       "errors": {
@@ -1183,8 +1176,6 @@
       "lineAccount": "Line {n} income account",
       "addLine": "Add line",
       "subtotal": "Subtotal",
-      "tax": "Tax",
-      "taxAt": "Tax {rate}",
       "totalDue": "Total due",
       "newClientTitle": "New client",
       "newClientSub": "Added without leaving your invoice.",
@@ -1262,7 +1253,6 @@
       "noPayments": "No payments yet.",
       "receipt": "Receipt",
       "detailsTitle": "Details",
-      "taxRate": "Tax rate",
       "activityTitle": "Activity",
       "created": "Created",
       "approved": "Approved",
@@ -1289,8 +1279,6 @@
         "amount": "Amount ({currency})",
         "qtyRate": "{qty} × {rate}",
         "subtotal": "Subtotal",
-        "tax": "Tax",
-        "taxAt": "Tax {rate}%",
         "total": "Total",
         "paid": "Paid",
         "credited": "Credited",
@@ -1463,9 +1451,6 @@
     "postingProfileCreated": "Posting profile {code} created",
     "postingProfileRepointed": "Posting profile now posts to {account}",
     "postingProfileStatus": "{action, select, deactivate {Posting profile {code} deactivated} other {Posting profile {code} reactivated}}",
-    "taxCodeCreated": "Tax code {code} created",
-    "taxCodeDefault": "{code} is now the default sales tax",
-    "taxCodeStatus": "{action, select, deactivate {Tax code {code} deactivated} other {Tax code {code} reactivated}}",
     "invoiceSaved": "Invoice saved",
     "invoiceDraftCreated": "Draft invoice created",
     "paymentReceived": "Payment received and posted",
@@ -1484,20 +1469,6 @@
       "company": "Your company",
       "review": "Review the chart",
       "confirm": "Confirm"
-    },
-    "vat": {
-      "title": "VAT registration",
-      "label": "Is the company registered for VAT?",
-      "none": "Not registered for VAT",
-      "noneHint": "Client invoices are raised with no sales tax (a 0% \"No sales tax\" code becomes the default). The output VAT account is still added and stays at zero.",
-      "charged": "Registered for VAT",
-      "chargedHint": "Creates VAT tax codes at your rate.",
-      "rate": "VAT rate (%)",
-      "rateHint": "The rate your VAT tax codes use, for example 5 or 15.",
-      "rateError": "Enter a rate above 0 and up to 100.",
-      "choiceError": "Choose whether the company is registered for VAT.",
-      "invoiceTaxNotice": "Client invoices use the default sales tax code, which Finance manages on Accounting → Tax.",
-      "alreadySetUp": "Sales tax is already set up: {name} ({rate}%) — manage it on Accounting → Tax."
     },
     "banks": {
       "title": "Banks",
@@ -1535,7 +1506,6 @@
       "classCount": "{count, plural, one {# account} other {# accounts}}",
       "control": "Control",
       "heading": "Heading",
-      "vat": "VAT",
       "bank": "Bank",
       "profilesTitle": "Posting profiles ({count})",
       "profilesHint": "One per cost, expense and income account. Supplier bill lines pick from these.",
@@ -1547,9 +1517,6 @@
       "profiles": "{count, plural, one {# posting profile} other {# posting profiles}}",
       "fiscalYear": "Fiscal year {fyName}, {start} – {end}, with 12 open monthly periods",
       "banks": "{count, plural, =0 {Petty cash only — no bank accounts} one {# bank account ({names}) and petty cash} other {# bank accounts ({names}) and petty cash}}",
-      "vatCharged": "VAT tax codes at {rate}%",
-      "vatNone": "No sales tax (0% default)",
-      "vatConfigured": "Sales tax kept as configured: {name} ({rate}%)",
       "onceTitle": "This can only be done once",
       "onceBody": "Setup runs only while the chart of accounts is empty. Afterwards, accounts can be renamed, added and switched off on the chart of accounts.",
       "submit": "Set up accounting",
@@ -1563,7 +1530,6 @@
       "installs": {
         "chart": "Construction chart of accounts and posting profiles",
         "banks": "Your bank accounts",
-        "tax": "Sales tax",
         "fiscalYear": "The first fiscal year, with 12 open periods",
         "numbering": "Numbering for journals, invoices and bills"
       },
@@ -1575,7 +1541,6 @@
       "notice": "Accounting can’t be set up automatically: this organisation already has {records} but no chart of accounts. Remove them or add the chart manually.",
       "unknownRecords": "other accounting records",
       "record": {
-        "TAX_CODES": "tax codes",
         "POSTING_PROFILES": "posting profiles",
         "BANK_ACCOUNTS": "bank accounts",
         "FISCAL_YEARS": "fiscal years"
@@ -1660,94 +1625,6 @@
     },
     "scheduled": "From {date}: {code}",
     "notInForce": "Not in force yet"
-  },
-  "invoiceTax": {
-    "label": "Tax",
-    "readOnly": "Tax: {name} ({rate}%)",
-    "option": "{name} ({rate}%)",
-    "defaultSuffix": "default",
-    "hint": "The organisation's default is preselected. Choose another sales tax code only when this invoice needs it.",
-    "loading": "Loading tax codes…",
-    "loadFailed": "Could not load tax codes. The default sales tax will apply.",
-    "missing": "No default sales tax is set — Finance sets it on Accounting → Tax.",
-    "missingLink": "Open Accounting → Tax",
-    "error": {
-      "TAX_CODE_OVERRIDE_FORBIDDEN": "Only Finance can raise an invoice at a tax code other than the default.",
-      "TAX_NOT_CONFIGURED": "No default sales tax is set — Finance sets it on Accounting → Tax.",
-      "TAX_CODE_NOT_APPLICABLE": "That tax code can't be used for this invoice: it is not an active sales tax code on the invoice date. Choose another."
-    }
-  },
-  "taxCodes": {
-    "title": "Tax",
-    "description": "A tax code's rate never changes — for a new rate, create a new code and make it the default. \"No tax\" is a sales code at 0%.",
-    "colCode": "Code",
-    "colName": "Name",
-    "colRate": "Rate",
-    "colDirection": "Applies to",
-    "colEffectiveFrom": "Effective from",
-    "colStatus": "Status",
-    "rate": "{rate}%",
-    "direction": {
-      "OUTPUT": "Sales",
-      "INPUT": "Purchases"
-    },
-    "status": {
-      "ACTIVE": "Active",
-      "INACTIVE": "Inactive",
-      "SUPERSEDED": "Superseded"
-    },
-    "defaultBadge": "Default",
-    "noDefault": "No default sales tax is set, so client invoices can't be raised. Make an active sales code the default.",
-    "countLabel": "{count, plural, =0 {No tax codes} one {# tax code} other {# tax codes}}",
-    "empty": "No tax codes yet.",
-    "emptyHint": "Create a sales tax code and make it the default before raising client invoices.",
-    "loadFailed": "Could not load tax codes.",
-    "readOnlyNote": "Only Finance can change tax codes.",
-    "rowMenu": "Actions for {code}",
-    "makeDefault": {
-      "action": "Make default"
-    },
-    "deactivate": {
-      "action": "Deactivate",
-      "title": "Deactivate {code}",
-      "body": "New invoices can no longer use it. Invoices already raised with it keep their tax.",
-      "confirm": "Deactivate code",
-      "isDefault": "This is the default sales tax. Make another code the default first.",
-      "defaultHint": "The default can't be deactivated — make another code the default first."
-    },
-    "reactivate": {
-      "action": "Reactivate",
-      "title": "Reactivate {code}",
-      "body": "It can be chosen on new invoices again.",
-      "confirm": "Reactivate code"
-    },
-    "actionFailed": "Could not update {code}.",
-    "create": {
-      "new": "New tax code",
-      "title": "New tax code",
-      "name": "Name",
-      "namePlaceholder": "e.g. Sales tax 6%",
-      "code": "Code",
-      "codeHint": "Up to 10 capital letters, digits, underscores or dots, e.g. VAT6_OUT.",
-      "rate": "Rate (%)",
-      "rateHint": "0 to 100. Use 0 for a \"No tax\" code. It can't be changed once the code is created.",
-      "direction": "Applies to",
-      "OUTPUT": "Sales",
-      "OUTPUTHint": "Client invoices",
-      "INPUT": "Purchases",
-      "INPUTHint": "Supplier bills — posted gross, no tax to reclaim",
-      "effectiveFrom": "Effective from",
-      "effectiveFromHint": "Leave empty to start today.",
-      "submit": "Create tax code",
-      "problem": {
-        "code": "Use 1–10 capital letters, digits, underscores or dots.",
-        "code-taken": "A tax code with this code already exists.",
-        "name": "Enter a name.",
-        "rate": "Enter a rate from 0 to 100, with at most four decimals.",
-        "direction": "Choose whether it applies to sales or purchases."
-      },
-      "failed": "Could not create the tax code."
-    }
   },
   "invoiceNumbering": {
     "title": "Invoice numbering",

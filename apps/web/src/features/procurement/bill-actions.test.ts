@@ -101,9 +101,8 @@ function bill(overrides: Partial<SupplierBill> = {}): SupplierBill {
     purchaseOrderRevisionId: null,
     projectId: null,
     subtotal: '1000.00',
-    vatAmount: '50.00',
-    totalAmount: '1050.00',
-    outstandingAmount: '1050.00',
+    totalAmount: '1000.00',
+    outstandingAmount: '1000.00',
     lines: [
       {
         id: 'l-1',
@@ -112,8 +111,6 @@ function bill(overrides: Partial<SupplierBill> = {}): SupplierBill {
         quantity: null,
         unitPrice: null,
         netAmount: '600.00',
-        vatAmount: '30.00',
-        grossAmount: '630.00',
         expenseProfileCode: 'MATERIAL_PURCHASE',
         projectId: null,
         boqNodeId: null,
@@ -125,8 +122,6 @@ function bill(overrides: Partial<SupplierBill> = {}): SupplierBill {
         quantity: null,
         unitPrice: null,
         netAmount: '400.00',
-        vatAmount: '20.00',
-        grossAmount: '420.00',
         expenseProfileCode: 'OFFICE_EXPENSE',
         projectId: null,
         boqNodeId: null,
@@ -363,21 +358,9 @@ describe('planBillPost', () => {
     expect(result.plan.lines).toHaveLength(3);
 
     const [first, second, credit] = result.plan.lines;
-    expect(first).toMatchObject({ accountCode: '50303', debit: '630.00', credit: null });
-    expect(second).toMatchObject({ accountCode: '60100', debit: '420.00', credit: null });
-    expect(credit).toMatchObject({ accountCode: '20100', debit: null, credit: '1050.00' });
-  });
-
-  /**
-   * ACCO's VAT is non-recoverable, so the whole gross goes to expense. A preview built on net
-   * would understate every line by its VAT and disagree with the credit.
-   */
-  it('debits gross, not net', () => {
-    const result = planBillPost(bill(), ACCOUNTS, PROFILES, 'en');
-    if (!result.ok) return;
-
-    expect(result.plan.totalDebit).toBe('1050.00');
-    expect(result.plan.totalDebit).not.toBe('1000.00');
+    expect(first).toMatchObject({ accountCode: '50303', debit: '600.00', credit: null });
+    expect(second).toMatchObject({ accountCode: '60100', debit: '400.00', credit: null });
+    expect(credit).toMatchObject({ accountCode: '20100', debit: null, credit: '1000.00' });
   });
 
   it('balances, and says so', () => {

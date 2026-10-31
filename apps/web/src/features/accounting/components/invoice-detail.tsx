@@ -36,7 +36,6 @@ import { MessageHistory } from '@/features/communications/components/message-his
 import { InvoiceReminderDialog } from '@/features/communications/components/invoice-reminder-dialog';
 import { canSendReminder, daysOverdue } from '@/features/communications/reminder-eligibility';
 
-import { formatRatePercent } from '../tax-codes';
 import { useAccounts, useApprovalSettings } from '../hooks/use-accounting';
 import {
   invoiceKeys,
@@ -353,7 +352,6 @@ export function InvoiceDetail({
             <RecordPanel title={td('detailsTitle')}>
               <dl className="space-y-2 text-body-sm">
                 <Row label={t('fieldSource')} value={humanSource(data, t)} />
-                <Row label={td('taxRate')} value={data.taxRate != null ? `${formatRatePercent(data.taxRate)}%` : '—'} />
               </dl>
             </RecordPanel>
 
@@ -557,7 +555,7 @@ function InvoiceSheet({
   const billTo = invoice.billingAddressSnapshot?.client;
   const address = [billTo?.address, billTo?.city].filter(Boolean).join('\n') || null;
 
-  const adjustments = (rows: typeof model.lessAfterTax) =>
+  const adjustments = (rows: typeof model.lessAfterSubtotal) =>
     rows.map((a) => ({ label: t(`less.${a.kind}`), value: `−${money(a.minor)}` }));
 
   return (
@@ -598,17 +596,9 @@ function InvoiceSheet({
         amount: <span className="tabular-nums">{money(line.amountMinor)}</span>,
       }))}
       totals={[
-        ...adjustments(model.lessBeforeTax),
+        ...adjustments(model.lessBeforeSubtotal),
         { label: t('subtotal'), value: money(model.subtotalMinor) },
-        ...(model.taxMinor > 0 || invoice.taxRate != null
-          ? [
-              {
-                label: invoice.taxRate != null ? t('taxAt', { rate: formatRatePercent(invoice.taxRate) }) : t('tax'),
-                value: money(model.taxMinor),
-              },
-            ]
-          : []),
-        ...adjustments(model.lessAfterTax),
+        ...adjustments(model.lessAfterSubtotal),
       ]}
       total={{ label: t('total'), value: money(model.totalMinor) }}
       note={

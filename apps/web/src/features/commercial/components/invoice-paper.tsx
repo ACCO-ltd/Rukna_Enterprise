@@ -52,7 +52,6 @@ export function InvoicePaper({
 
   const totals = [
     { label: t('subtotal'), value: money(document.subtotal) },
-    ...(document.taxLabel ? [{ label: document.taxLabel, value: money(document.taxAmount) }] : []),
     // ADR-046 §5 — what a certificate invoice holds back; the total is net of these.
     ...document.deductions.map((d) => ({ label: d.label, value: <>−{money(d.amount)}</> })),
   ];

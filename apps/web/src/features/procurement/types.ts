@@ -554,9 +554,6 @@ export interface SupplierBillLine {
   quantity: Quantity | null;
   unitPrice: Money | null;
   netAmount: Money;
-  vatAmount: Money;
-  /** `net + vat`, computed server-side. Posts to expense whole — ACCO's VAT is non-recoverable. */
-  grossAmount: Money;
   /** The `PostingProfile.code` whose account the server debits at post time. */
   expenseProfileCode: string;
   projectId: string | null;
@@ -630,7 +627,6 @@ export interface SupplierBill {
   purchaseOrderRevisionId: string | null;
   projectId: string | null;
   subtotal: Money;
-  vatAmount: Money;
   totalAmount: Money;
   outstandingAmount: Money;
   /**
@@ -689,7 +685,6 @@ export interface CreateSupplierBillLinePayload {
   quantity?: number;
   unitPrice?: number;
   netAmount: number;
-  vatAmount: number;
   expenseProfileCode: string;
   projectId?: string;
   /** Direct (non-PO) bills only: the BOQ cost item a project line is for. */

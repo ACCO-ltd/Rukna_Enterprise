@@ -344,7 +344,7 @@ export function RecordSignedContractForm({ projectId }: { projectId: string }) {
             <FormField htmlFor="record-signedDate" label={t('labels.signedDate')} required error={attempted ? fieldErrors.signedDate : undefined}>
               <DatePicker id="record-signedDate" value={fields.signedDate} onChange={(value) => set('signedDate', value)} />
             </FormField>
-            <FormField htmlFor="record-contractValue" label={t('labels.contractValue')} hint={t('valueHint')} required error={attempted ? fieldErrors.contractValue : undefined}>
+            <FormField htmlFor="record-contractValue" label={t('labels.contractValue')} required error={attempted ? fieldErrors.contractValue : undefined}>
               <MoneyInput id="record-contractValue" value={fields.contractValue} onValueChange={(value) => set('contractValue', value)} placeholder="0.00" />
             </FormField>
             <FormField htmlFor="record-paymentTerms" label={t('labels.paymentTerms')}>

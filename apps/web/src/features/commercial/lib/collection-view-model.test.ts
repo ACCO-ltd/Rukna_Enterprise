@@ -21,7 +21,6 @@ function makeInvoiceRow(overrides: Partial<CommercialInvoiceRow> = {}): Commerci
     dueDate: '2026-10-01',
     currency: 'USD',
     subtotal: '100000.00',
-    vatAmount: '5000.00',
     totalAmount: '105000.00',
     paidAmount: '0.00',
     outstandingAmount: '105000.00',

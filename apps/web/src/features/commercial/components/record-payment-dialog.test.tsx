@@ -36,7 +36,6 @@ function row(overrides: Partial<CommercialInvoiceRow>): CommercialInvoiceRow {
     dueDate: '2026-09-01',
     currency: 'USD',
     subtotal: '1000.00',
-    vatAmount: '50.00',
     totalAmount: '1050.00',
     paidAmount: '0.00',
     outstandingAmount: '1050.00',

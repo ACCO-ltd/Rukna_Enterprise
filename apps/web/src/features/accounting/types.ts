@@ -533,15 +533,10 @@ export interface ClientInvoice {
   contractId: string | null;
   currencyCode: string;
   subtotal: string;
-  vatAmount: string;
   totalAmount: string;
-  /** The tax code it was raised at (ADR-041); null for invoices raised before tax codes. */
-  taxCodeId?: string | null;
-  /** The rate it was raised at, as a PERCENT snapshot ("5", "5.0000", "0"). */
-  taxRate?: string | null;
   /**
    * ADR-046 §5 — on an IPC invoice, what the client holds back this period. `totalAmount` (amount
-   * due) = subtotal + vatAmount − retentionAmount − advanceRecoveryAmount. "0" on other invoices.
+   * due) = subtotal − retentionAmount − advanceRecoveryAmount. "0" on other invoices.
    */
   retentionAmount?: string;
   advanceRecoveryAmount?: string;
@@ -609,8 +604,6 @@ export interface GenerateInvoicePayload {
   invoiceDate: string;
   dueDate: string;
   paymentTerms?: string;
-  /** ADR-041: omitted → the organisation's default sales tax code. */
-  taxCodeId?: string;
 }
 
 /**
@@ -623,21 +616,17 @@ export interface GenerateInvoiceFromInstallmentPayload {
   invoiceDate: string;
   dueDate: string;
   paymentTerms?: string;
-  /** ADR-041: omitted → the organisation's default sales tax code. */
-  taxCodeId?: string;
 }
 
 /**
  * Body of `POST /invoices/:id/post`.
  *
- * Codes, not ids — resolved by `posting-accounts.ts`. `vatAccountCode` is omitted when the
- * invoice carries no VAT; the server only looks at it when `vatAmount > 0`.
+ * Codes, not ids — resolved by `posting-accounts.ts`.
  */
 export interface PostInvoicePayload {
   arAccountCode: string;
   /** Omitted for a hand-typed invoice, whose lines name their own income accounts (ADR-048). */
   revenueAccountCode?: string;
-  vatAccountCode?: string;
 }
 
 /** Body of `POST /invoices/:id/reverse`. `reason` is capped at 500 characters server-side. */

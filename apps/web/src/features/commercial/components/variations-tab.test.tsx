@@ -269,7 +269,6 @@ function packageWithLine(
     presentedTotal: null,
     documents: [],
     packageSubtotal: null,
-    packageTax: null,
     packageTotal: null,
     packageOutstanding: null,
   };

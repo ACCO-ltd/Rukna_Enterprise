@@ -78,7 +78,6 @@ export const ACCOUNT_SUBTYPE_GROUPS: { group: string; subtypes: string[] }[] = [
       'FIXED_ASSETS',
       'ACCUMULATED_DEPRECIATION',
       'PREPAYMENTS',
-      'VAT_INPUT_RECOVERABLE',
       'OTHER_CURRENT_ASSET',
       'OTHER_NON_CURRENT_ASSET',
     ],
@@ -89,7 +88,6 @@ export const ACCOUNT_SUBTYPE_GROUPS: { group: string; subtypes: string[] }[] = [
       'ACCOUNTS_PAYABLE',
       'UNAPPLIED_CLIENT_RECEIPTS',
       'CLIENT_ADVANCE_LIABILITY',
-      'VAT_OUTPUT_PAYABLE',
       'OTHER_CURRENT_LIABILITY',
       'OTHER_NON_CURRENT_LIABILITY',
     ],
@@ -159,10 +157,10 @@ export function headingCandidates(accounts: readonly Account[], accountClass: Ac
  *
  * **`SYSTEM_OR_APPROVED_ADJUSTMENT` is missing and that is a defect, not a choice** (A6). The
  * DTO declares `@IsEnum(['UNRESTRICTED','SYSTEM_ONLY'])` while the schema has three values, and
- * the seed uses the third for both bank accounts and Output VAT — the accounts whose whole
+ * the seed uses the third for bank accounts — the accounts whose whole
  * point is "posting engine, or a CFO-approved manual adjustment".
  *
- * So a bank or VAT account created through this API cannot be given the policy the seeded
+ * So a bank account created through this API cannot be given the policy the seeded
  * chart gives its own. The form says so at the field rather than letting someone discover it
  * by comparing a new account against a seeded one months later.
  */

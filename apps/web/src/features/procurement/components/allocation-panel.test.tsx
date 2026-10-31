@@ -71,7 +71,6 @@ function bill(overrides: Partial<SupplierBill> = {}): SupplierBill {
     purchaseOrderRevisionId: null,
     projectId: null,
     subtotal: '3000.00',
-    vatAmount: '0.00',
     totalAmount: '3000.00',
     outstandingAmount: '3000.00',
     ...overrides,

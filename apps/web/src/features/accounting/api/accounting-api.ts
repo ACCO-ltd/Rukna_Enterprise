@@ -15,7 +15,6 @@ import type {
   CreatePostingProfileBody,
   RepointPostingProfileBody,
 } from '../posting-profile-setup';
-import type { CreateTaxCodeBody, TaxCodesView } from '../tax-codes';
 import type {
   Account,
   AccountLedger,
@@ -268,39 +267,6 @@ export function setPostingProfileActive(id: string, active: boolean): Promise<Po
 
 // ─── Tax codes (ADR-041) ─────────────────────────────────────────────────────────
 
-/**
- * `GET /tax-codes` — every code (both directions, any status) and the default sales code.
- * Readable by `manage:receivable` too: whoever raises an invoice sees which code it will use.
- */
-export function listTaxCodes(): Promise<TaxCodesView> {
-  return apiClient<TaxCodesView>('/tax-codes');
-}
-
-/** `POST /tax-codes` — 409 `TAX_CODE_TAKEN`; 400 `TAX_CODE_INVALID` / `TAX_RATE_INVALID`. */
-export function createTaxCode(body: CreateTaxCodeBody): Promise<TaxCodesView> {
-  return apiClient<TaxCodesView>('/tax-codes', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-}
-
-/** `PUT /tax-codes/default-output` — 422 `TAX_CODE_NOT_APPLICABLE` unless ACTIVE OUTPUT. */
-export function setDefaultOutputTaxCode(taxCodeId: string): Promise<TaxCodesView> {
-  return apiClient<TaxCodesView>('/tax-codes/default-output', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ taxCodeId }),
-  });
-}
-
-/** `POST /tax-codes/:id/deactivate` | `/reactivate` — 409 `TAX_CODE_IS_DEFAULT` for the default. */
-export function setTaxCodeActive(id: string, active: boolean): Promise<TaxCodesView> {
-  return apiClient<TaxCodesView>(`/tax-codes/${id}/${active ? 'reactivate' : 'deactivate'}`, {
-    method: 'POST',
-  });
-}
-
 // ─── Accounting setup from a template (ADR-040) ─────────────────────────────────
 
 /** `GET /accounting/setup/status` — whether the one-step setup may still run. */
@@ -310,19 +276,12 @@ export function getAccountingSetupStatus(): Promise<SetupStatus> {
 
 /**
  * `GET /accounting/setup/template` — the chart and posting profiles the install would create,
- * shaped by the VAT rate and the number of banks named. `vatRate` is omitted when VAT is not
- * charged (0 here): the input-VAT row appears only for a positive rate. Bank rows come back as
+ * shaped by the number of banks named. Bank rows come back as
  * `Bank 1…n` placeholders (codes 10100, 10101, …) flagged `conditional: 'BANK'`.
  */
-export function getAccountingSetupTemplate(params: {
-  vatRate: number;
-  banks: number;
-}): Promise<SetupTemplate> {
+export function getAccountingSetupTemplate(params: { banks: number }): Promise<SetupTemplate> {
   return apiClient<SetupTemplate>('/accounting/setup/template', {
-    params: {
-      ...(params.vatRate > 0 ? { vatRate: String(params.vatRate) } : {}),
-      banks: String(params.banks),
-    },
+    params: { banks: String(params.banks) },
   });
 }
 

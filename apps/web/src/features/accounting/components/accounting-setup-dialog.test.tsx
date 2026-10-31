@@ -37,8 +37,8 @@ function row(overrides: Partial<SetupTemplateAccount> & { code: string }): Setup
   };
 }
 
-/** What the API would answer for the given VAT rate and bank count. */
-function template(vatRate: number, banks: number): SetupTemplate {
+/** What the API would answer for the given bank count. */
+function template(banks: number): SetupTemplate {
   return {
     templateId: 'CONSTRUCTION',
     version: '1.0.0',
@@ -61,17 +61,6 @@ function template(vatRate: number, banks: number): SetupTemplate {
         parentCode: '10000',
         isControlAccount: true,
       }),
-      ...(vatRate > 0
-        ? [
-            row({
-              code: '22100',
-              name: 'VAT clearing',
-              accountClass: 'LIABILITY',
-              normalBalance: 'CREDIT',
-              conditional: 'VAT' as const,
-            }),
-          ]
-        : []),
       row({
         code: '40000',
         name: 'Contract revenue',
@@ -90,14 +79,13 @@ const STATUS = {
   hasFiscalYear: false,
   hasPolicies: false,
   existingRecords: [],
-  defaultSalesTax: null,
 };
 
 beforeEach(() => {
   vi.clearAllMocks();
   api.getAccountingSetupStatus.mockResolvedValue(STATUS);
   api.getAccountingSetupTemplate.mockImplementation(
-    async ({ vatRate, banks }: { vatRate: number; banks: number }) => template(vatRate, banks),
+    async ({ banks }: { banks: number }) => template(banks),
   );
 });
 
@@ -111,13 +99,7 @@ function renderDialog(onDone = vi.fn()) {
 
 const next = (user: UserEvent) => user.click(screen.getByRole('button', { name: 'Next' }));
 
-async function fillCompany(user: UserEvent, { vat }: { vat: string | null }) {
-  if (vat === null) {
-    await user.click(screen.getByRole('radio', { name: /Not registered for VAT/ }));
-  } else {
-    await user.click(screen.getByRole('radio', { name: /^Registered for VAT/ }));
-    await user.type(screen.getByLabelText('VAT rate (%)'), vat);
-  }
+async function fillCompany(user: UserEvent) {
   await user.type(screen.getByLabelText('Account name'), 'Main operating');
   await user.type(screen.getByLabelText('Bank'), 'Salaam Bank');
 }
@@ -131,35 +113,15 @@ describe('AccountingSetupDialog — step 1', () => {
     expect(screen.getByText('A petty cash account is always added.')).toBeInTheDocument();
   });
 
-  it('will not continue without a VAT decision or with an empty bank row', async () => {
+  it('will not continue with an empty bank row', async () => {
     const user = userEvent.setup();
     renderDialog();
 
     await next(user);
 
-    expect(
-      screen.getByText('Choose whether the company is registered for VAT.'),
-    ).toBeInTheDocument();
     expect(screen.getByText('Enter the account name.')).toBeInTheDocument();
     expect(screen.getByText('Enter the bank.')).toBeInTheDocument();
     expect(api.getAccountingSetupTemplate).not.toHaveBeenCalled();
-  });
-
-  it('refuses a VAT rate outside 0 < r ≤ 100', async () => {
-    const user = userEvent.setup();
-    renderDialog();
-
-    await fillCompany(user, { vat: '150' });
-    await next(user);
-
-    expect(screen.getByText('Enter a rate above 0 and up to 100.')).toBeInTheDocument();
-
-    const rate = screen.getByLabelText('VAT rate (%)');
-    await user.clear(rate);
-    await user.type(rate, '5');
-    await next(user);
-
-    expect(await screen.findByText(/1 bank account$/)).toBeInTheDocument();
   });
 
   it('adds and removes bank rows, and allows none', async () => {
@@ -174,11 +136,10 @@ describe('AccountingSetupDialog — step 1', () => {
     expect(screen.queryByLabelText('Account name')).not.toBeInTheDocument();
     expect(screen.getByText(/No banks named/)).toBeInTheDocument();
 
-    await user.click(screen.getByRole('radio', { name: /Not registered for VAT/ }));
     await next(user);
 
     await waitFor(() =>
-      expect(api.getAccountingSetupTemplate).toHaveBeenCalledWith({ vatRate: 0, banks: 0 }),
+      expect(api.getAccountingSetupTemplate).toHaveBeenCalledWith({ banks: 0 }),
     );
   });
 
@@ -193,68 +154,22 @@ describe('AccountingSetupDialog — step 1', () => {
 
     expect(screen.getByText('Covers July 2026 – June 2027')).toBeInTheDocument();
   });
-
-  it('says where the invoice sales tax is managed — no fixed 5%', async () => {
-    renderDialog();
-    expect(
-      await screen.findByText(
-        'Client invoices use the default sales tax code, which Finance manages on Accounting → Tax.',
-      ),
-    ).toBeInTheDocument();
-    expect(screen.queryByText(/5% sales tax/)).not.toBeInTheDocument();
-  });
-
-  it('with a default sales tax already set: no VAT question, tax left as configured', async () => {
-    api.getAccountingSetupStatus.mockResolvedValue({
-      ...STATUS,
-      defaultSalesTax: { code: 'VAT5_OUT', name: 'Sales tax 5%', ratePercent: '5.0000' },
-    });
-    api.runAccountingSetup.mockResolvedValue({
-      accountsCreated: 5,
-      postingProfilesCreated: 1,
-      fiscalYear: { id: 'fy-1', name: 'FY2026' },
-      bankAccountsCreated: 1,
-      taxCodesCreated: 0,
-    });
-    const user = userEvent.setup();
-    renderDialog();
-
-    expect(
-      await screen.findByText(
-        'Sales tax is already set up: Sales tax 5% (5%) — manage it on Accounting → Tax.',
-      ),
-    ).toBeInTheDocument();
-    expect(screen.queryByRole('radio', { name: /Registered for VAT/ })).not.toBeInTheDocument();
-
-    await user.type(screen.getByLabelText('Account name'), 'Main operating');
-    await user.type(screen.getByLabelText('Bank'), 'Salaam Bank');
-    await next(user);
-    await screen.findByRole('table', { name: 'Chart of accounts to be created' });
-    expect(api.getAccountingSetupTemplate).toHaveBeenCalledWith({ vatRate: 0, banks: 1 });
-    await next(user);
-
-    expect(screen.getByText('Sales tax kept as configured: Sales tax 5% (5%)')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Set up accounting' }));
-    await waitFor(() => expect(api.runAccountingSetup).toHaveBeenCalledTimes(1));
-    expect(api.runAccountingSetup.mock.calls[0]![0]).toMatchObject({ vat: { charged: false } });
-  });
 });
 
 describe('AccountingSetupDialog — review', () => {
-  it('previews the chart for the choices: VAT row, typed bank names, control badge, counts', async () => {
+  it('previews the chart for the choices: typed bank names, control badge, counts', async () => {
     const user = userEvent.setup();
     renderDialog();
 
-    await fillCompany(user, { vat: '5' });
+    await fillCompany(user);
     await next(user);
 
     const chart = await screen.findByRole('table', { name: 'Chart of accounts to be created' });
-    expect(api.getAccountingSetupTemplate).toHaveBeenCalledWith({ vatRate: 5, banks: 1 });
+    expect(api.getAccountingSetupTemplate).toHaveBeenCalledWith({ banks: 1 });
 
     // The bank row carries the name typed on step 1, not the template placeholder.
     expect(within(chart).getByText('Main operating')).toBeInTheDocument();
     expect(within(chart).queryByText('Bank account 1')).not.toBeInTheDocument();
-    expect(within(chart).getByText('VAT clearing')).toBeInTheDocument();
 
     const receivable = within(chart).getByText('Accounts receivable').closest('tr')!;
     expect(within(receivable).getByText('Control')).toBeInTheDocument();
@@ -267,41 +182,28 @@ describe('AccountingSetupDialog — review', () => {
     const year = new Date().getFullYear();
     expect(
       screen.getByText(
-        `6 accounts · 1 posting profile · FY${year} with 12 open periods · 1 bank account`,
+        `5 accounts · 1 posting profile · FY${year} with 12 open periods · 1 bank account`,
       ),
     ).toBeInTheDocument();
     expect(screen.getByText('Posting profiles (1)')).toBeInTheDocument();
-  });
-
-  it('leaves the VAT row out when VAT is not charged', async () => {
-    const user = userEvent.setup();
-    renderDialog();
-
-    await fillCompany(user, { vat: null });
-    await next(user);
-
-    const chart = await screen.findByRole('table', { name: 'Chart of accounts to be created' });
-    expect(within(chart).queryByText('VAT clearing')).not.toBeInTheDocument();
-    expect(api.getAccountingSetupTemplate).toHaveBeenCalledWith({ vatRate: 0, banks: 1 });
   });
 
   it('goes back to step 1 with the input kept', async () => {
     const user = userEvent.setup();
     renderDialog();
 
-    await fillCompany(user, { vat: '5' });
+    await fillCompany(user);
     await next(user);
     await screen.findByRole('table', { name: 'Chart of accounts to be created' });
 
     await user.click(screen.getByRole('button', { name: 'Back' }));
     expect(screen.getByLabelText('Account name')).toHaveValue('Main operating');
-    expect(screen.getByLabelText('VAT rate (%)')).toHaveValue('5');
   });
 });
 
 describe('AccountingSetupDialog — confirm and submit', () => {
   async function reachConfirm(user: UserEvent) {
-    await fillCompany(user, { vat: '5' });
+    await fillCompany(user);
     await user.type(screen.getByLabelText('Account number (Optional)'), '000123');
     await next(user);
     await screen.findByRole('table', { name: 'Chart of accounts to be created' });
@@ -330,20 +232,18 @@ describe('AccountingSetupDialog — confirm and submit', () => {
     renderDialog();
     await reachConfirm(user);
 
-    expect(screen.getByText('6 accounts in the chart of accounts')).toBeInTheDocument();
+    expect(screen.getByText('5 accounts in the chart of accounts')).toBeInTheDocument();
     expect(screen.getByText('1 bank account (Main operating) and petty cash')).toBeInTheDocument();
-    expect(screen.getByText('VAT tax codes at 5%')).toBeInTheDocument();
     expect(screen.getByText('This can only be done once')).toBeInTheDocument();
     expect(api.runAccountingSetup).not.toHaveBeenCalled();
   });
 
   it('sends the exact body and shows the success dialog', async () => {
     api.runAccountingSetup.mockResolvedValue({
-      accountsCreated: 6,
+      accountsCreated: 5,
       postingProfilesCreated: 1,
       fiscalYear: { id: 'fy-1', name: 'FY2026' },
       bankAccountsCreated: 1,
-      taxCodesCreated: 1,
     });
     const user = userEvent.setup();
     const onDone = renderDialog();
@@ -354,7 +254,6 @@ describe('AccountingSetupDialog — confirm and submit', () => {
     await waitFor(() => expect(api.runAccountingSetup).toHaveBeenCalledTimes(1));
     expect(api.runAccountingSetup.mock.calls[0]![0]).toEqual({
       templateId: 'CONSTRUCTION',
-      vat: { charged: true, ratePercent: 5 },
       banks: [{ accountName: 'Main operating', bankName: 'Salaam Bank', accountNumber: '000123' }],
       fiscalYear: { year: new Date().getFullYear(), startMonth: 1 },
     });

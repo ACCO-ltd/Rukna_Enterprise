@@ -74,12 +74,6 @@ function seededChart(): Account[] {
       versions: [version({ name: 'Supplier Advance', accountSubtype: 'SUPPLIER_ADVANCE' })],
     }),
     account({
-      id: 'acc-vat',
-      code: '20200',
-      normalBalance: 'CREDIT',
-      versions: [version({ name: 'Output VAT Payable', accountSubtype: 'VAT_OUTPUT_PAYABLE' })],
-    }),
-    account({
       id: 'acc-revenue',
       code: '42600',
       normalBalance: 'CREDIT',
@@ -92,7 +86,6 @@ describe('resolvePostingAccount — the seeded chart', () => {
   it.each([
     ['AR_CONTROL', '11000'],
     ['REVENUE', '42600'],
-    ['VAT_OUTPUT', '20200'],
     ['UNAPPLIED_RECEIPTS', '11500'],
     ['AP_CONTROL', '20000'],
     ['SUPPLIER_ADVANCE', '20100'],
@@ -106,11 +99,11 @@ describe('resolvePostingAccount — the seeded chart', () => {
 
 describe('resolvePostingAccount — when the chart cannot answer', () => {
   it('reports NOT_CONFIGURED when no account carries the subtype', () => {
-    const chart = seededChart().filter((a) => a.code !== '20200');
+    const chart = seededChart().filter((a) => a.code !== '42600');
 
-    const result = resolvePostingAccount(chart, 'VAT_OUTPUT');
+    const result = resolvePostingAccount(chart, 'REVENUE');
 
-    expect(result).toMatchObject({ ok: false, problem: 'NOT_CONFIGURED', role: 'VAT_OUTPUT' });
+    expect(result).toMatchObject({ ok: false, problem: 'NOT_CONFIGURED', role: 'REVENUE' });
   });
 
   it('reports AMBIGUOUS rather than picking the first of two', () => {
@@ -180,26 +173,24 @@ describe('resolvePostingAccounts', () => {
     const { resolved, problems } = resolvePostingAccounts(seededChart(), [
       'AR_CONTROL',
       'REVENUE',
-      'VAT_OUTPUT',
     ]);
 
     expect(problems).toEqual([]);
     expect(resolved.get('AR_CONTROL')?.code).toBe('11000');
     expect(resolved.get('REVENUE')?.code).toBe('42600');
-    expect(resolved.get('VAT_OUTPUT')?.code).toBe('20200');
   });
 
   it('collects every problem instead of stopping at the first', () => {
-    const chart = seededChart().filter((a) => !['20200', '42600'].includes(a.code));
+    const chart = seededChart().filter((a) => !['20000', '42600'].includes(a.code));
 
     const { resolved, problems } = resolvePostingAccounts(chart, [
       'AR_CONTROL',
       'REVENUE',
-      'VAT_OUTPUT',
+      'AP_CONTROL',
     ]);
 
     expect(resolved.get('AR_CONTROL')?.code).toBe('11000');
-    expect(problems.map((p) => p.role)).toEqual(['REVENUE', 'VAT_OUTPUT']);
+    expect(problems.map((p) => p.role)).toEqual(['REVENUE', 'AP_CONTROL']);
   });
 });
 

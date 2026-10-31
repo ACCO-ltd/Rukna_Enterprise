@@ -383,12 +383,8 @@ export type BillPostPlanResult =
  *
  * `supplier-bill.service.ts` builds one debit per line plus a single credit:
  *
- *   Dr  Expense (per line, from the line's posting profile)   grossAmount
+ *   Dr  Expense (per line, from the line's posting profile)   netAmount
  *     Cr  Accounts Payable                                                totalAmount
- *
- * Note it is **grossAmount**, not net: ACCO's VAT policy is non-recoverable, so the tax goes
- * to expense with the cost rather than to a recoverable VAT asset. A preview that showed net
- * would understate every line by its VAT.
  *
  * Preview and payload are returned together from one resolution, for the same reason
  * `planInvoicePost` does it: a preview computed separately from the request is a preview that
@@ -418,15 +414,15 @@ export function planBillPost(
 
   for (const line of bill.lines ?? []) {
     const profile = expenseByCode.get(line.expenseProfileCode);
-    const gross = toMinorUnits(line.grossAmount, MONEY_SCALE);
-    debitMinor += gross;
+    const net = toMinorUnits(line.netAmount, MONEY_SCALE);
+    debitMinor += net;
 
     lines.push({
       // A line naming a profile that no longer resolves still has to render. The server will
       // reject the post; showing the code beats showing an empty row and no explanation.
       accountCode: profile?.account.code ?? line.expenseProfileCode,
       accountName: profile ? accountName(profile.account, locale) : line.expenseProfileCode,
-      debit: fromMinorUnits(gross, MONEY_SCALE),
+      debit: fromMinorUnits(net, MONEY_SCALE),
       credit: null,
     });
   }
@@ -446,7 +442,7 @@ export function planBillPost(
       lines,
       totalDebit: fromMinorUnits(debitMinor, MONEY_SCALE),
       totalCredit: fromMinorUnits(creditMinor, MONEY_SCALE),
-      // ∑ line gross = totalAmount is enforced at creation, so a mismatch means the bill row
+      // ∑ line net = totalAmount is enforced at creation, so a mismatch means the bill row
       // is itself inconsistent. Surfaced rather than assumed: posting a journal the engine
       // will reject is worse than refusing here.
       balanced: debitMinor === creditMinor,

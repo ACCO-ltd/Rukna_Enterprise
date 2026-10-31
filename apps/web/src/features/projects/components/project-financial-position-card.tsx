@@ -118,8 +118,8 @@ export function ProjectFinancialPositionCard({ projectId }: { projectId: string 
             ) : null}
           </div>
 
-          {/* Certified is pre-VAT and invoiced is VAT-inclusive; stacking them without
-              saying so reads as though the project invoiced more than it certified. */}
+          {/* Certified is net of hold-backs; stacking it beside invoiced without saying so
+              reads as though the project invoiced more than it certified. */}
           {fp.data.hasContract ? (
             <p className="text-xs text-muted-foreground">{t('basisNote')}</p>
           ) : null}

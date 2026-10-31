@@ -47,7 +47,7 @@ export function getCommercialCurrentCycle(
 /**
  * The project's billing position — invoices, receipts, ageing and unapplied cash.
  *
- * Everything is on the invoice-total (VAT-inclusive) basis and comes pre-classified: the browser
+ * Everything is on the invoice-total basis and comes pre-classified: the browser
  * never decides whether an invoice is overdue or how much of it is settled.
  */
 export function getCommercialBilling(projectId: string): Promise<CommercialBillingResponse> {
@@ -224,8 +224,6 @@ export interface IssuePackagePayload {
   paymentTerms?: string;
   notes?: string;
   selectedVariationIds: string[];
-  /** ADR-041: omitted → the organisation's default sales tax code. */
-  taxCodeId?: string;
 }
 
 /** Issue (approve + post) the billing package for a milestone installment atomically. */
@@ -399,7 +397,7 @@ export function resolveDispute(
 export interface CreateCreditNotePayload {
   invoiceId: string;
   reason: 'OMISSION' | 'PRICE_ERROR' | 'CORRECTION' | 'NEGATIVE_VARIATION';
-  /** Decimal string — ex-VAT net amount to credit */
+  /** Decimal string — the amount to credit */
   netAmount: string;
   /** ISO date string */
   accountingDate: string;
@@ -457,8 +455,6 @@ export interface CreateSeparateChargeInvoicePayload {
   invoiceDate: string;
   dueDate: string;
   paymentTerms?: string;
-  /** ADR-041: omitted → the organisation's default sales tax code. */
-  taxCodeId?: string;
 }
 
 export function createSeparateChargeInvoice(

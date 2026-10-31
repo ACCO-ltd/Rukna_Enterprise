@@ -20,7 +20,7 @@
  * value — never 0, because a typo reading as a valid zero is how a bill posts for nothing), and
  * become JSON numbers only in the payload (`moneyToApi` / `quantityToApi`). A line's Amount is
  * `quantity × unit price` through `extendedAmountMinor`, the one place that scale change
- * happens. The server recomputes the bill's subtotal, VAT and total from the lines it receives;
+ * happens. The server recomputes the bill's total from the lines it receives;
  * the totals shown on the form are a preview of that.
  */
 
@@ -113,7 +113,6 @@ export interface DirectLineDraft {
   expenseProfileCode: string;
   quantity: string;
   unitPrice: string;
-  vatAmount: string;
   /**
    * A net amount the clerk typed over `quantity × unit price` — the supplier's invoice says
    * something else (rounding, a discount taken on the total). Empty: the net follows the
@@ -138,7 +137,6 @@ export function emptyDirectLine(): DirectLineDraft {
     expenseProfileCode: '',
     quantity: '1',
     unitPrice: '',
-    vatAmount: '',
     netOverride: '',
     costLine: '',
   };
@@ -163,7 +161,6 @@ export interface PoLineDraft {
   received: ReceivedOnLine | null;
   quantity: string;
   unitPrice: string;
-  vatAmount: string;
   /** As on {@link DirectLineDraft.netOverride}. */
   netOverride: string;
   expenseProfileCode: string;
@@ -207,7 +204,6 @@ export function seedPoLine(
     received: threeWay ? (received.get(line.id) ?? { acceptedMinor: 0, grnNumbers: [] }) : null,
     quantity: line.orderedQuantity,
     unitPrice: line.unitPrice,
-    vatAmount: '',
     netOverride: '',
     expenseProfileCode: '',
     costTargetLabel: poLineCostTargetLabel(line),
@@ -277,29 +273,23 @@ export function savedNetVariance(line: {
 }
 
 export interface BillTotalsMinor {
-  subtotal: number;
-  vat: number;
   total: number;
 }
 
-/** Subtotal (Σ net), VAT and Total, in minor units. A line not yet complete counts as zero. */
-export function billTotalsMinor(lines: readonly (NetFigures & { vatAmount: string })[]): BillTotalsMinor {
-  let subtotal = 0;
-  let vat = 0;
-  for (const line of lines) {
-    subtotal += lineNetMinor(line) ?? 0;
-    vat += parseMinorUnits(line.vatAmount, MONEY_SCALE) ?? 0;
-  }
-  return { subtotal, vat, total: subtotal + vat };
+/** The total (Σ net), in minor units. A line not yet complete counts as zero. */
+export function billTotalsMinor(lines: readonly NetFigures[]): BillTotalsMinor {
+  let total = 0;
+  for (const line of lines) total += lineNetMinor(line) ?? 0;
+  return { total };
 }
 
 // ─── Line validation ─────────────────────────────────────────────────────────────
 
 /** Keys under `procurement.bills.lineError` (and `create.errors.costLine`). */
-export type LineErrorKey = 'description' | 'profile' | 'quantity' | 'unitPrice' | 'net' | 'vat' | 'costLine';
+export type LineErrorKey = 'description' | 'profile' | 'quantity' | 'unitPrice' | 'net' | 'costLine';
 
 export type LineErrors = Partial<
-  Record<'description' | 'profile' | 'quantity' | 'unitPrice' | 'vat' | 'amount' | 'costLine', LineErrorKey>
+  Record<'description' | 'profile' | 'quantity' | 'unitPrice' | 'amount' | 'costLine', LineErrorKey>
 >;
 
 /**
@@ -307,14 +297,11 @@ export type LineErrors = Partial<
  *
  * - Quantity must be positive: on a PO bill it is what the three-way match compares, and on a
  *   direct bill a zero-quantity line bills nothing.
- * - VAT must be typed. `vatAmount` is `@IsNumber() @Min(0)` with no default, and "no VAT" and
- *   "VAT not entered yet" must not look the same on a document that posts to the ledger — an
- *   explicit 0 is the answer for a line with none.
  * - The amount must be computable: a figure so large its product overflows is refused rather
  *   than sent as a quietly wrong number.
  * - A typed net must be a number of zero or more — it is what the line posts.
  */
-function figureErrors(line: NetFigures & { vatAmount: string }): LineErrors {
+function figureErrors(line: NetFigures): LineErrors {
   const errors: LineErrors = {};
   const qty = parseMinorUnits(line.quantity, QUANTITY_SCALE);
   if (qty === null || qty <= 0) errors.quantity = 'quantity';
@@ -322,9 +309,6 @@ function figureErrors(line: NetFigures & { vatAmount: string }): LineErrors {
   const price = parseMinorUnits(line.unitPrice, MONEY_SCALE);
   if (price === null || price < 0) errors.unitPrice = 'unitPrice';
   else if (!errors.quantity && lineAmountMinor(line) === null) errors.unitPrice = 'net';
-
-  const vat = parseMinorUnits(line.vatAmount, MONEY_SCALE);
-  if (vat === null || vat < 0) errors.vat = 'vat';
 
   if (line.netOverride.trim() !== '') {
     const net = parseMinorUnits(line.netOverride, MONEY_SCALE);
@@ -410,12 +394,11 @@ interface HeaderDraft {
   dueDate: string;
 }
 
-function figures(line: NetFigures & { vatAmount: string }) {
+function figures(line: NetFigures) {
   return {
     quantity: quantityToApi(parseMinorUnits(line.quantity, QUANTITY_SCALE) ?? 0),
     unitPrice: moneyToApi(parseMinorUnits(line.unitPrice, MONEY_SCALE) ?? 0),
     netAmount: moneyToApi(lineNetMinor(line) ?? 0),
-    vatAmount: moneyToApi(parseMinorUnits(line.vatAmount, MONEY_SCALE) ?? 0),
   };
 }
 
@@ -476,7 +459,6 @@ export interface BilledFigures {
   poLineId: string | null;
   quantity: string;
   unitPrice: string;
-  vatAmount: string;
   netOverride: string;
   expenseProfileCode: string;
 }
@@ -535,7 +517,6 @@ export function billToFormValues(bill: SupplierBill): BillFormValues {
     return {
       quantity,
       unitPrice,
-      vatAmount: plainMoney(line.vatAmount),
       netOverride: saved !== null && computed !== null && saved !== computed ? net : '',
     };
   };
@@ -602,7 +583,6 @@ export function applyBilledFigures(
       ...line,
       quantity: figure.quantity,
       unitPrice: figure.unitPrice,
-      vatAmount: figure.vatAmount,
       netOverride: figure.netOverride,
       expenseProfileCode: figure.expenseProfileCode,
     };

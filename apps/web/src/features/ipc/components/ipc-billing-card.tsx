@@ -9,12 +9,6 @@ import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissi
 import { getInvoiceDocument } from '@/features/accounting/api/invoices-api';
 import { InvoiceStatusBadges } from '@/features/accounting/components/invoice-status-badges';
 import {
-  InvoiceTaxField,
-  taxCodeBody,
-  useInvoiceTaxChoice,
-  useInvoiceTaxErrorMessage,
-} from '@/features/accounting/components/invoice-tax-field';
-import {
   useGenerateInvoice,
   useInvoiceForIpc,
   useOpenInvoiceDocument,
@@ -68,8 +62,6 @@ export function IpcBillingCard({
   const [invoiceDate, setInvoiceDate] = useState(today);
   const [dueDate, setDueDate] = useState(() => defaultDueDate(today));
   const [formOpen, setFormOpen] = useState(false);
-  const tax = useInvoiceTaxChoice({ enabled: formOpen });
-  const taxError = useInvoiceTaxErrorMessage();
 
   // A certificate that is not effective cannot be invoiced, and the card would only ever show
   // an empty state. Rendering nothing is the honest result.
@@ -85,8 +77,7 @@ export function IpcBillingCard({
 
   const errorMessage =
     generate.isError && !alreadyInvoiced
-      ? (taxError(generate.error) ??
-        tLifecycle(lifecycleErrorKey(toLifecycleError(generate.error).kind)))
+      ? tLifecycle(lifecycleErrorKey(toLifecycleError(generate.error).kind))
       : undefined;
 
   return (
@@ -149,13 +140,13 @@ export function IpcBillingCard({
               className="space-y-4"
               onSubmit={(event) => {
                 event.preventDefault();
-                if (!canGenerateInvoice({ isEffective }, existing) || tax.blocked) return;
+                if (!canGenerateInvoice({ isEffective }, existing)) return;
                 // Opens synchronously on submit (before either async step resolves) so the
                 // browser never treats the eventual navigation as an unrequested popup — the
                 // fix for "I clicked Generate invoice and saw nothing".
                 const tab = window.open('', '_blank', 'noopener');
                 generate.mutate(
-                  { ipcId, invoiceDate, dueDate, ...taxCodeBody(tax) },
+                  { ipcId, invoiceDate, dueDate },
                   {
                     onSuccess: (created) => {
                       setFormOpen(false);
@@ -201,8 +192,6 @@ export function IpcBillingCard({
                 </FormField>
               </div>
 
-              <InvoiceTaxField choice={tax} id="ipc-invoice-tax-code" disabled={generate.isPending} />
-
               <p className="text-sm text-muted-foreground">
                 {t('amountNote', { currency: currency ?? '' })}
               </p>
@@ -210,7 +199,6 @@ export function IpcBillingCard({
               <div className="flex flex-wrap gap-2">
                 <Button
                   type="submit"
-                  disabled={tax.blocked}
                   loading={generate.isPending}
                   loadingText={tCommon('saving')}
                 >

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { hasVat, planInvoicePost, rolesForInvoice } from './invoice-journal';
+import { planInvoicePost, rolesForInvoice } from './invoice-journal';
 import type { Account, AccountVersion, ClientInvoice } from './types';
 
 function version(overrides: Partial<AccountVersion> = {}): AccountVersion {
@@ -42,10 +42,6 @@ function chart(): Account[] {
       name: 'Project Income',
       accountSubtype: 'PROJECT_REVENUE',
     }),
-    account('20200', {
-      name: 'Output VAT Payable',
-      accountSubtype: 'VAT_OUTPUT_PAYABLE',
-    }),
   ];
 }
 
@@ -62,8 +58,7 @@ function invoice(overrides: Partial<ClientInvoice> = {}): ClientInvoice {
     projectId: 'proj-1',
     contractId: 'con-1',
     currencyCode: 'SOS',
-    subtotal: '6190.48',
-    vatAmount: '307.52',
+    subtotal: '6498.00',
     totalAmount: '6498.00',
     outstandingAmount: '6498.00',
     paymentTerms: 'Net 30',
@@ -84,30 +79,21 @@ function invoice(overrides: Partial<ClientInvoice> = {}): ClientInvoice {
   };
 }
 
-const zeroVat = { subtotal: '6498.00', vatAmount: '0.00', totalAmount: '6498.00' };
-
-describe('hasVat / rolesForInvoice', () => {
-  it('needs a VAT account only when there is VAT', () => {
-    expect(hasVat(invoice())).toBe(true);
-    expect(rolesForInvoice(invoice())).toEqual(['AR_CONTROL', 'REVENUE', 'VAT_OUTPUT']);
-  });
-
-  it('does not demand a VAT account for a zero-VAT invoice', () => {
-    expect(hasVat(invoice(zeroVat))).toBe(false);
-    expect(rolesForInvoice(invoice(zeroVat))).toEqual(['AR_CONTROL', 'REVENUE']);
+describe('rolesForInvoice', () => {
+  it('needs AR and revenue', () => {
+    expect(rolesForInvoice(invoice())).toEqual(['AR_CONTROL', 'REVENUE']);
   });
 });
 
-describe('planInvoicePost — the three-line journal', () => {
-  it('writes Dr AR = total, Cr revenue = subtotal, Cr VAT = vat', () => {
+describe('planInvoicePost — the two-line journal', () => {
+  it('writes Dr AR = total, Cr revenue = subtotal', () => {
     const result = planInvoicePost(invoice(), chart(), 'en');
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
     expect(result.plan.lines).toEqual([
       { accountCode: '11000', accountName: 'Accounts Receivable', debit: '6498.00', credit: null },
-      { accountCode: '42600', accountName: 'Project Income', debit: null, credit: '6190.48' },
-      { accountCode: '20200', accountName: 'Output VAT Payable', debit: null, credit: '307.52' },
+      { accountCode: '42600', accountName: 'Project Income', debit: null, credit: '6498.00' },
     ]);
   });
 
@@ -120,19 +106,10 @@ describe('planInvoicePost — the three-line journal', () => {
     expect(result.plan.balanced).toBe(true);
   });
 
-  it('omits the VAT line entirely when there is no VAT', () => {
-    const result = planInvoicePost(invoice(zeroVat), chart(), 'en');
-    if (!result.ok) throw new Error('expected a plan');
-
-    expect(result.plan.lines).toHaveLength(2);
-    expect(result.plan.lines.map((l) => l.accountCode)).toEqual(['11000', '42600']);
-    expect(result.plan.balanced).toBe(true);
-  });
-
   it('reports imbalance rather than offering to post it', () => {
-    // total ≠ subtotal + vat. Should be impossible, so the plan says so instead of silently
-    // sending a journal the posting engine will reject.
-    const broken = invoice({ subtotal: '6000.00', vatAmount: '300.00', totalAmount: '6498.00' });
+    // total ≠ subtotal. Should be impossible, so the plan says so instead of silently sending a
+    // journal the posting engine will reject.
+    const broken = invoice({ subtotal: '6300.00', totalAmount: '6498.00' });
 
     const result = planInvoicePost(broken, chart(), 'en');
     if (!result.ok) throw new Error('expected a plan');
@@ -141,7 +118,6 @@ describe('planInvoicePost — the three-line journal', () => {
     expect(result.plan.totalDebit).toBe('6498.00');
     expect(result.plan.totalCredit).toBe('6300.00');
   });
-
 });
 
 describe('planInvoicePost — the payload it will send', () => {
@@ -149,22 +125,7 @@ describe('planInvoicePost — the payload it will send', () => {
     const result = planInvoicePost(invoice(), chart(), 'en');
     if (!result.ok) throw new Error('expected a plan');
 
-    expect(result.plan.payload).toEqual({
-      arAccountCode: '11000',
-      revenueAccountCode: '42600',
-      vatAccountCode: '20200',
-    });
-  });
-
-  it('omits vatAccountCode rather than sending an empty string', () => {
-    const result = planInvoicePost(invoice(zeroVat), chart(), 'en');
-    if (!result.ok) throw new Error('expected a plan');
-
-    expect(result.plan.payload).toEqual({
-      arAccountCode: '11000',
-      revenueAccountCode: '42600',
-    });
-    expect('vatAccountCode' in result.plan.payload).toBe(false);
+    expect(result.plan.payload).toEqual({ arAccountCode: '11000', revenueAccountCode: '42600' });
   });
 
   it('sends exactly the codes the preview showed', () => {
@@ -172,22 +133,16 @@ describe('planInvoicePost — the payload it will send', () => {
     if (!result.ok) throw new Error('expected a plan');
 
     const { payload, lines } = result.plan;
-    expect(lines.map((l) => l.accountCode)).toEqual([
-      payload.arAccountCode,
-      payload.revenueAccountCode,
-      payload.vatAccountCode,
-    ]);
+    expect(lines.map((l) => l.accountCode)).toEqual([payload.arAccountCode, payload.revenueAccountCode]);
   });
 });
 
 describe('planInvoicePost — when the chart cannot answer', () => {
   it('refuses, naming every unresolved role at once', () => {
-    const bare = chart().filter((a) => a.code === '11000');
-
-    const result = planInvoicePost(invoice(), bare, 'en');
+    const result = planInvoicePost(invoice(), [], 'en');
 
     expect(result.ok).toBe(false);
-    expect(!result.ok && result.problems.map((p) => p.role)).toEqual(['REVENUE', 'VAT_OUTPUT']);
+    expect(!result.ok && result.problems.map((p) => p.role)).toEqual(['AR_CONTROL', 'REVENUE']);
   });
 
   it('reports AMBIGUOUS when two accounts claim the same role', () => {
@@ -201,22 +156,13 @@ describe('planInvoicePost — when the chart cannot answer', () => {
       problem: 'AMBIGUOUS',
     });
   });
-
-  it('still plans a zero-VAT invoice on a chart with no VAT account', () => {
-    const noVat = chart().filter((a) => a.code !== '20200');
-
-    const result = planInvoicePost(invoice(zeroVat), noVat, 'en');
-
-    expect(result.ok).toBe(true);
-  });
 });
 
 // ADR-046 §5 — an IPC invoice that holds back retention and recovers an advance. Amount due =
-// subtotal + vat − retention − advance recovery; the two hold-backs are debits of their own.
+// subtotal − retention − advance recovery; the two hold-backs are debits of their own.
 describe('planInvoicePost — retention and advance recovery', () => {
   const withHoldBacks = {
     subtotal: '150000.00',
-    vatAmount: '0.00',
     retentionAmount: '7500.00',
     advanceRecoveryAmount: '15000.00',
     totalAmount: '127500.00',
@@ -231,7 +177,7 @@ describe('planInvoicePost — retention and advance recovery', () => {
     expect(rolesForInvoice(invoice({ ...withHoldBacks }))).toEqual([
       'AR_CONTROL', 'REVENUE', 'RETENTION_RECEIVABLE', 'CLIENT_ADVANCE',
     ]);
-    expect(rolesForInvoice(invoice(zeroVat))).toEqual(['AR_CONTROL', 'REVENUE']);
+    expect(rolesForInvoice(invoice())).toEqual(['AR_CONTROL', 'REVENUE']);
   });
 
   it('debits AR with the amount due and the hold-backs separately, and balances', () => {
@@ -263,7 +209,6 @@ describe('planInvoicePost — retention and advance recovery', () => {
 describe('planInvoicePost — retention release', () => {
   const release = {
     subtotal: '0.00',
-    vatAmount: '0.00',
     retentionReleasedAmount: '12500.00',
     totalAmount: '12500.00',
     source: { kind: 'RETENTION_RELEASE' as const, label: 'CTR-001', id: 'con-1' },
@@ -302,8 +247,7 @@ describe('planInvoicePost — a hand-typed invoice (ADR-048)', () => {
     source: { kind: 'MANUAL', label: null, id: null },
     sourceIpcId: null,
     subtotal: '2120.00',
-    vatAmount: '106.00',
-    totalAmount: '2226.00',
+    totalAmount: '2120.00',
     lines: [
       { lineNo: 1, description: 'Excavator hire', quantity: '4', unitPrice: '450.00', amount: '1800.00', revenueAccountCode: '42100' },
       { lineNo: 2, description: 'Surplus rebar', quantity: '10', unitPrice: '12.00', amount: '120.00', revenueAccountCode: '42200' },
@@ -316,13 +260,12 @@ describe('planInvoicePost — a hand-typed invoice (ADR-048)', () => {
     const result = planInvoicePost(manual, hireChart(), 'en');
     if (!result.ok) throw new Error('expected a plan');
     expect(result.plan.lines).toEqual([
-      { accountCode: '11000', accountName: 'Accounts Receivable', debit: '2226.00', credit: null },
+      { accountCode: '11000', accountName: 'Accounts Receivable', debit: '2120.00', credit: null },
       { accountCode: '42100', accountName: 'Equipment hire income', debit: null, credit: '2000.00' },
       { accountCode: '42200', accountName: 'Sale of surplus materials', debit: null, credit: '120.00' },
-      { accountCode: '20200', accountName: 'Output VAT Payable', debit: null, credit: '106.00' },
     ]);
     expect(result.plan.balanced).toBe(true);
-    expect(result.plan.payload).toEqual({ arAccountCode: '11000', vatAccountCode: '20200' });
+    expect(result.plan.payload).toEqual({ arAccountCode: '11000' });
   });
 
   it('does not ask for a revenue account', () => {

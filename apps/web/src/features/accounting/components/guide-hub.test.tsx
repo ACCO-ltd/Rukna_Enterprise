@@ -89,7 +89,6 @@ const status = (over: object = {}) => ({
   hasFiscalYear: false,
   hasPolicies: false,
   existingRecords: [],
-  defaultSalesTax: null,
   ...over,
 });
 
@@ -106,7 +105,6 @@ describe('GuideHub — setup in proportion to what is left', () => {
 
     const card = await screen.findByRole('region', { name: 'Set up accounting' });
     expect(within(card).getByText('Construction chart of accounts and posting profiles')).toBeInTheDocument();
-    expect(within(card).getByText('Sales tax')).toBeInTheDocument();
     // What it installs is not repeated as a checklist.
     expect(screen.queryByRole('region', { name: /First-time setup/ })).not.toBeInTheDocument();
     expect(screen.queryByText('Fiscal year & periods')).not.toBeInTheDocument();

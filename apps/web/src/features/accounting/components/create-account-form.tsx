@@ -371,7 +371,7 @@ export function CreateAccountForm({ title, onDone }: { title: string; onDone: ()
           </div>
           {/* Full width, under both selects: the warning is too long for a half-width column. */}
           {contra ? <Alert variant="warning" messages={[t('contraWarning')]} /> : null}
-          {/* A6. The third policy exists in the schema and the seed uses it for bank and VAT
+          {/* A6. The third policy exists in the schema and the seed uses it for bank
               accounts; the DTO's @IsEnum omits it. Said here rather than left to be discovered
               by comparing a new account against a seeded one months later. */}
           <p className="text-xs text-muted-foreground">{t('postingPolicyHint')}</p>

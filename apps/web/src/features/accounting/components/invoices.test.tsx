@@ -39,8 +39,7 @@ function invoice(overrides: Partial<ClientInvoice> = {}): ClientInvoice {
     projectId: 'proj-1',
     contractId: 'con-1',
     currencyCode: 'SOS',
-    subtotal: '6190.48',
-    vatAmount: '307.52',
+    subtotal: '6498.00',
     totalAmount: '6498.00',
     outstandingAmount: '6498.00',
     paymentTerms: 'Net 30',
@@ -99,10 +98,6 @@ function chart(): Account[] {
     account('42600', {
       name: 'Project Income',
       accountSubtype: 'PROJECT_REVENUE',
-    }),
-    account('20200', {
-      name: 'Output VAT Payable',
-      accountSubtype: 'VAT_OUTPUT_PAYABLE',
     }),
   ];
 }
@@ -229,7 +224,7 @@ describe('InvoicesList', () => {
 describe('PostInvoiceDialog', () => {
   const noop = () => {};
 
-  it('shows the exact three lines the server will write', () => {
+  it('shows the exact lines the server will write', () => {
     renderWithProviders(
       <PostInvoiceDialog
         invoice={invoice({ postingStatus: 'NOT_POSTED' })}
@@ -244,21 +239,6 @@ describe('PostInvoiceDialog', () => {
     expect(within(dialog).getByText('11000')).toBeInTheDocument();
     expect(within(dialog).getByText('Accounts Receivable')).toBeInTheDocument();
     expect(within(dialog).getByText('42600')).toBeInTheDocument();
-    expect(within(dialog).getByText('20200')).toBeInTheDocument();
-  });
-
-  it('drops the VAT line for a zero-VAT invoice', () => {
-    renderWithProviders(
-      <PostInvoiceDialog
-        invoice={invoice({ subtotal: '6498.00', vatAmount: '0.00', totalAmount: '6498.00' })}
-        accounts={chart()}
-        isPending={false}
-        onConfirm={noop}
-        onDismiss={noop}
-      />,
-    );
-
-    expect(screen.queryByText('20200')).not.toBeInTheDocument();
   });
 
   it('sends exactly the codes it displayed', async () => {
@@ -280,7 +260,6 @@ describe('PostInvoiceDialog', () => {
     expect(onConfirm).toHaveBeenCalledWith({
       arAccountCode: '11000',
       revenueAccountCode: '42600',
-      vatAccountCode: '20200',
     });
   });
 
