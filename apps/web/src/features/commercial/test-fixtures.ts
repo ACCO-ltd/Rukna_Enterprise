@@ -126,7 +126,6 @@ export function invoiceRow(overrides: Partial<CommercialInvoiceRow> & Pick<Comme
     dueDate: null,
     currency: 'USD',
     subtotal: '8000.00',
-    vatAmount: '400.00',
     totalAmount: '8400.00',
     paidAmount: '0.00',
     outstandingAmount: '8400.00',

@@ -30,7 +30,7 @@ beforeAll(async () => {
   await prisma.account.update({ where: { id: env.accounts.ctrlId }, data: { status: 'INACTIVE' } });
   const bill = await svc.supplierBillService.create(env.identity, {
     supplierId: env.supplierId, supplierInvoiceNumber: 'SUP-INV-501', billDate: day(), dueDate: day(), currencyCode: 'USD',
-    lines: [{ description: 'Concrete pump', netAmount: 1000, vatAmount: 0, expenseProfileCode: env.postingProfileCode }],
+    lines: [{ description: 'Concrete pump', netAmount: 1000, expenseProfileCode: env.postingProfileCode }],
   } as never);
   await svc.supplierBillService.submit(env.identity, bill.id);
   await svc.supplierBillService.approve(other(), bill.id);

@@ -1,7 +1,6 @@
 import { Decimal } from '@prisma/client/runtime/library';
 
 import { ClientInvoiceService } from './client-invoice.service.js';
-import { fakeTaxCodes } from '../../__tests__/helpers/fake-tax-codes.js';
 
 /**
  * EVT-AR-002 must reverse every dimension the original posting carried. The reversal used to
@@ -46,7 +45,6 @@ describe('ClientInvoiceService.reverse — dimensions', () => {
       postingPort as never,
       {} as never,
       {} as never,
-      fakeTaxCodes() as never,
     );
 
     await service
@@ -101,7 +99,6 @@ describe('ClientInvoiceService.reverse — source release', () => {
       { post: jest.fn().mockResolvedValue({ journalEntryId: 'je2' }) } as never,
       {} as never,
       {} as never,
-      fakeTaxCodes() as never,
     );
     await service.reverse(
       { userId: 'u1', activeOrganizationId: 'o1', roles: [], permissions: [] } as never,

@@ -165,7 +165,7 @@ export function BillLinesTab({ bill }: { bill: SupplierBill }) {
                 <MoneyDisplay value={line.unitPrice} />
               </TableCell>
               <TableCell numeric className="font-medium">
-                <MoneyDisplay value={line.grossAmount} />
+                <MoneyDisplay value={line.netAmount} />
               </TableCell>
             </TableRow>
           ))}
@@ -279,10 +279,7 @@ export function BillJournalTab({ bill }: { bill: SupplierBill }) {
 
 export function useBillTotals(bill: SupplierBill) {
   const t = useTranslations('procurement.bills');
-  const rows: TotalsRow[] = [
-    { label: t('subtotal'), value: <MoneyDisplay value={bill.subtotal} /> },
-    { label: t('vat'), value: <MoneyDisplay value={bill.vatAmount} /> },
-  ];
+  const rows: TotalsRow[] = [];
   return {
     rows,
     total: { label: t('totalAmount'), value: <MoneyDisplay value={bill.totalAmount} /> },

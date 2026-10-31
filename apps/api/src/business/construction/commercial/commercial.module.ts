@@ -34,7 +34,6 @@ import { CommercialController } from './presentation/commercial.controller.js';
     TenancyModule,
     AuditLogsModule,
     AccountsReceivableModule,
-    // ADR-041 — the Prepare invoice preview reads the default sales tax code.
     AccountingCoreModule,
     VariationsModule,
     BoqModule,

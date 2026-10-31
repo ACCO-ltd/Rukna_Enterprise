@@ -50,7 +50,6 @@ beforeAll(async () => {
   svc = buildServices(prisma);
   for (const [code, name, accountClass, subtype] of [
     ['42100', 'Equipment hire income', 'INCOME', 'OTHER_INCOME'],
-    ['22000', 'Sales tax payable', 'LIABILITY', 'VAT_OUTPUT_PAYABLE'],
   ] as const) {
     const a = await prisma.account.create({
       data: { id: `${env.orgId}-${code}`, organizationId: env.orgId, code, normalBalance: 'CREDIT', createdBy: env.identity.userId },
@@ -62,8 +61,7 @@ beforeAll(async () => {
       },
     });
   }
-  // The fixture org charges 5%: 1000 → 1050.
-  const issued = await svc.clientInvoiceService.createManual(env.identity, sale('1000.00'));
+  const issued = await svc.clientInvoiceService.createManual(env.identity, sale('1050.00'));
   await svc.clientInvoiceService.issue(env.identity, issued.id);
   issuedId = issued.id;
   draftId = (await svc.clientInvoiceService.createManual(env.identity, sale('50.00'))).id;

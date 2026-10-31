@@ -41,7 +41,6 @@ beforeAll(async () => {
   env = await AccountingFixtureFactory.create(prisma);
   svc = buildServices(prisma);
   creditNotes = new CreditNoteService({ getClient: () => prisma } as never, svc.sequenceRepo, new PostingAccountResolver(new AccountRepository()), svc.postingService as never);
-  await income('22000', 'Sales tax payable', 'LIABILITY', 'VAT_OUTPUT_PAYABLE');
   hireId = await income('42100', 'Equipment hire income');
   scrapId = await income('42200', 'Sale of surplus materials');
   const clientId = (await prisma.contract.findFirstOrThrow({ where: { organizationId: env.orgId } })).clientId;

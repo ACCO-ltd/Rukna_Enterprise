@@ -109,7 +109,6 @@ it('PC-05: getPeriodCloseReadiness blocks when there are unposted APPROVED invoi
       dueDate:             env.periods.openEnd,
       currencyCode:        'USD',
       subtotal:            new Decimal('1000'),
-      vatAmount:           new Decimal('50'),
       totalAmount:         new Decimal('1050'),
       outstandingAmount:   new Decimal('1050'),
       billingAddressSnapshot: {},

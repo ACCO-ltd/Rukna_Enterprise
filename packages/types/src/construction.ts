@@ -1081,21 +1081,18 @@ export interface IpcResponse {
 
 // ─── Payment Status (derived — no status field stored on IPC) ─────────────────
 //
-// ADR-024 ACC-SET-001 (D2): settlement is measured against the VAT-inclusive ClientInvoice
-// total, never the pre-VAT netCertified. Every figure is reported separately so no two tax
-// bases are ever compared. UNINVOICED distinguishes "certified but not yet billed" from
+// ADR-024 ACC-SET-001 (D2): settlement is measured against the ClientInvoice total, never the
+// netCertified. Every figure is reported separately so no two bases are ever compared. UNINVOICED distinguishes "certified but not yet billed" from
 // "billed and unpaid" (matches CommercialSettlementState).
 
 export type IpcPaymentStatus = 'UNINVOICED' | 'UNPAID' | 'PARTIALLY_PAID' | 'PAID';
 
 export interface IpcPaymentStatusResponse {
-  /** Pre-VAT: certified items − deductions. */
+  /** Certified items − deductions. */
   netCertified: string;
-  /** VAT on the invoice; '0.00' when not invoiced. */
-  vatAmount: string;
-  /** VAT-inclusive invoice total; null when the IPC has no live invoice. */
+  /** The invoice total; null when the IPC has no live invoice. */
   invoiceTotal: string | null;
-  /** Σ posted receipt allocations against the invoice (VAT-inclusive cash). */
+  /** Σ posted receipt allocations against the invoice. */
   totalReceived: string;
   /** invoiceTotal − totalReceived (≥ 0); null when not invoiced. */
   outstanding: string | null;
@@ -2162,7 +2159,6 @@ export interface CommercialBillingPackageDocument {
   /** Installment name for MILESTONE; "VO-001 — Title" for VARIATION. */
   sourceReference: string;
   subtotal: string | null;
-  salesTax: string | null;
   total: string | null;
   dueDate: string | null;
   outstanding: string | null;
@@ -2188,9 +2184,9 @@ export interface CommercialBillingPackageDocument {
 export interface CommercialBillingPackageInvoice {
   id: string;
   invoiceNumber: string | null;
-  /** Ex-tax subtotal. Null when the caller cannot view financials. */
+  /** Null when the caller cannot view financials. */
   subtotal: string | null;
-  /** Tax-inclusive total. Null when the caller cannot view financials. */
+  /** Null when the caller cannot view financials. */
   totalAmount: string | null;
   dueDate: string | null;
   documentStatus: ClientInvoiceDocStatus;
@@ -2229,7 +2225,6 @@ export interface CommercialBillingPackage {
   // Slice 4B — flat document list and package-level aggregates (sum across all documents).
   documents: CommercialBillingPackageDocument[];
   packageSubtotal: string | null;
-  packageTax: string | null;
   packageTotal: string | null;
   packageOutstanding: string | null;
 }
@@ -2316,9 +2311,8 @@ export interface CommercialCurrentCycleResponse {
 //
 // The client-facing money-in view for one project's main contract: what has been invoiced,
 // what has been collected against those invoices, and what is still owed. Every figure is on
-// the **invoice-total basis** (VAT-inclusive) — settlement is measured against what the client
-// was actually asked to pay, never against a pre-VAT certified or plan amount. `subtotal` and
-// `vatAmount` are carried alongside so a screen that shows both can label the basis.
+// the **invoice-total basis** — settlement is measured against what the client was actually
+// asked to pay, never against a certified or plan amount.
 
 /**
  * Mirrors the AR `InvoiceDocStatus` / `PostingStatus` Prisma enums. Declared here rather than
@@ -2369,8 +2363,6 @@ export interface ManualInvoiceInput {
   invoiceDate: string;
   dueDate: string;
   currencyCode: string;
-  /** Omitted = the organisation's default sales tax code. */
-  taxCodeId?: string;
   paymentTerms?: string;
   /** The client's purchase order or job number, printed as "Your Ref."; blank = none. */
   clientReference?: string;
@@ -2452,7 +2444,6 @@ export interface CollectionCreditNoteDto {
   creditNoteNumber: string | null;
   reason: string;
   netAmount: string;
-  vatAmount: string;
   totalAmount: string;
   accountingDate: string;
   postingStatus: string;
@@ -2467,11 +2458,9 @@ export interface CommercialInvoiceRow {
   invoiceDate: string;
   dueDate: string | null;
   currency: string;
-  /** Pre-VAT. Null without financial visibility. */
-  subtotal: string | null;
   /** Null without financial visibility. */
-  vatAmount: string | null;
-  /** VAT-inclusive — the settlement basis. Null without financial visibility. */
+  subtotal: string | null;
+  /** The settlement basis. Null without financial visibility. */
   totalAmount: string | null;
   /** Sum of posted allocations against this invoice. Null without financial visibility. */
   paidAmount: string | null;
@@ -2643,7 +2632,7 @@ export interface OverviewAttentionItem {
   /** Human headline — e.g. "8 days overdue", "Promise missed", "Client dispute open". */
   headline: string;
   /**
-   * The financially relevant amount for this attention kind (VAT-inclusive outstanding or disputed).
+   * The financially relevant amount for this attention kind (outstanding or disputed).
    * Null without financial visibility (commercial redesign 2026-09-28 — was always a string).
    */
   amount: string | null;
@@ -2733,7 +2722,7 @@ export interface CommercialOverviewResponse {
     stage: OverviewCycleStage;
     /** One-line human description suitable for a card subtitle. */
     description: string;
-    /** VAT-inclusive installment amount (base × percentage). Null without financial visibility. */
+    /** Installment amount (base × percentage). Null without financial visibility. */
     amount: string | null;
     nextAction: {
       kind: 'MARK_READY' | 'PREPARE_INVOICE' | 'NONE';
@@ -3058,7 +3047,7 @@ export interface ProjectFinanceOverviewResponse {
     reconciliation: FinanceControlStatus;
     /**
      * Billing and general ledger (flow plan PR 4): what Commercial invoiced for this project
-     * (posted invoice subtotals less posted credit notes, excluding sales tax) against the
+     * (posted invoice subtotals less posted credit notes) against the
      * revenue the ledger recognised for it. They should agree; a difference is named, not hidden.
      */
     billing: FinanceControlStatus;
@@ -3311,9 +3300,9 @@ export interface GrantExtensionOfTimeRequest {
  * the existing `IpcItem.certifiedAmount → applicationItem(IpaItem).boqNodeId → BoqNode.sourceChangeOrderId
  * → VariationOrder` join and threads NO new column onto IPA/IPC/Invoice.
  *
- * Basis (approved decision): the gross / ex-VAT (subtotal) composition of the certified item lines.
+ * Basis (approved decision): the gross (subtotal) composition of the certified item lines.
  * `certifiedToDate` sums `certifiedAmount` across items of EFFECTIVE IPCs; `invoicedToDate` sums the
- * same across items of IPCs whose ClientInvoice is POSTED. VAT and certificate-level deductions are
+ * same across items of IPCs whose ClientInvoice is POSTED. Certificate-level deductions are
  * NOT VO-attributable — ADR-024 settlement truth (the invoice header total/outstanding) stays
  * AR-owned and untouched (CONST-VAR-012).
  *
@@ -3326,16 +3315,16 @@ export interface CertifiedInvoicedByVariation {
   reference: string;
   /** Its header title (for display). */
   title: string;
-  /** Σ certifiedAmount of effective-IPC item lines tracing to this VO's BOQ nodes (ex-VAT). */
+  /** Σ certifiedAmount of effective-IPC item lines tracing to this VO's BOQ nodes */
   certifiedToDate: string | null;
-  /** Σ certifiedAmount of POSTED-invoice item lines tracing to this VO's BOQ nodes (ex-VAT). */
+  /** Σ certifiedAmount of POSTED-invoice item lines tracing to this VO's BOQ nodes */
   invoicedToDate: string | null;
 }
 
 /**
  * The base-scope bucket: certified/invoiced value tracing to BASELINE BOQ nodes
  * (`sourceChangeOrderId === null`). First-class and normal — original contract scope is never
- * forced under a VO. Same gross/ex-VAT basis as the per-VO rows.
+ * forced under a VO. Same gross basis as the per-VO rows.
  */
 export interface CertifiedInvoicedBaseScope {
   certifiedToDate: string | null;
@@ -3355,9 +3344,9 @@ export interface CertifiedInvoicedByVariationResponse {
   baseScope: CertifiedInvoicedBaseScope;
   /** Per-VO breakdown, ordered by reference. Includes VOs with zero certified/invoiced to date. */
   byVariation: CertifiedInvoicedByVariation[];
-  /** Whole-contract certified gross = baseScope + Σ byVariation (ex-VAT). Null without the capability. */
+  /** Whole-contract certified gross = baseScope + Σ byVariation. Null without the capability. */
   totalCertifiedToDate: string | null;
-  /** Whole-contract invoiced gross = baseScope + Σ byVariation (ex-VAT). Null without the capability. */
+  /** Whole-contract invoiced gross = baseScope + Σ byVariation. Null without the capability. */
   totalInvoicedToDate: string | null;
 }
 
@@ -3949,13 +3938,6 @@ export interface CommercialPreparePreviewResponse {
     amount: string | null;
     defaultSelected: boolean;
   }>;
-  /**
-   * The default sales tax rate as a fraction string (e.g. "0.05"); null when the organisation has
-   * no default sales tax configured (ADR-041) — then a draft cannot be created until Finance sets one.
-   */
-  taxRate: string | null;
-  /** ADR-041 — the default sales tax code the drafts will use unless Finance picks another. */
-  defaultTaxCode: { id: string; code: string; name: string; ratePercent: string } | null;
 }
 
 /** POST …/commercial/installments/:installmentId/prepare-package — creates drafts only. */
@@ -3965,8 +3947,6 @@ export interface CommercialPreparePackageRequest {
   dueDate?: string;
   paymentTermsDays?: number;
   notes?: string;
-  /** ADR-041 — the sales tax code for every draft; omitted → the organisation's default. */
-  taxCodeId?: string;
 }
 
 export interface CommercialPreparePackageResponse {
@@ -4017,13 +3997,10 @@ export interface CommercialInvoiceDocumentResponse {
   subtotal: string | null;
   /**
    * ADR-046 §5 — amounts a certificate invoice holds back this period ("Less retention", "Less
-   * advance recovery"), shown between the tax and the total so the figures add up. Empty otherwise.
+   * advance recovery"), shown between the subtotal and the total so the figures add up. Empty otherwise.
    * Amounts null without financial visibility.
    */
   deductions: Array<{ label: string; amount: string | null }>;
-  /** e.g. "Sales tax 5%". */
-  taxLabel: string | null;
-  taxAmount: string | null;
   total: string | null;
   balanceDue: string | null;
   source: ClientInvoiceSource;

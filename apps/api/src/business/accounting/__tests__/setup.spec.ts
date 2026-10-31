@@ -2,7 +2,7 @@
  * ST — ADR-040 accounting setup from a template, against Postgres.
  *
  *   ST-01  install on an empty org creates the full, postable configuration (readiness ready,
- *          every resolver role resolves, banks linked, VAT codes, 12 OPEN periods, sequences, audit)
+ *          every resolver role resolves, banks linked, no VAT accounts, 12 OPEN periods, sequences, audit)
  *   ST-02  a second install is refused 409 ACCOUNTING_ALREADY_SET_UP and writes nothing
  *   ST-03  a failure part-way rolls the WHOLE install back (no accounts, no policies, no profiles)
  *   ST-04  re-pointing a posting profile closes the previous version at the new date — the
@@ -11,7 +11,6 @@
  *   ST-06  posting a supplier bill whose line names an INCOME profile is refused (review M1)
  *   ST-07  a future fiscal year: versions start today and a chart edit succeeds (review M2);
  *          an overlapping fiscal year is a 409, not a constraint 500 (review L4)
- *   ST-08  tax configured before the chart is kept; setup runs and links Output VAT (ADR-041)
  *   ST-09  three concurrent installs → exactly one succeeds, two 409
  */
 import { PrismaClient } from '@prisma/client';
@@ -67,7 +66,6 @@ function makeSetup(repoOverride?: (repo: AccountingSetupRepository) => void) {
 
 const INPUT = {
   templateId: 'CONSTRUCTION' as const,
-  vat: { charged: true, ratePercent: 5 },
   banks: [
     { accountName: 'Salaam operating', bankName: 'Salaam Somali Bank', accountNumber: `ST-${randomUUID().slice(0, 8)}` },
     { accountName: 'Dahabshiil', bankName: 'Dahabshiil Bank International' },
@@ -84,14 +82,12 @@ async function cleanup(orgId: string) {
   await q`DELETE FROM bank_accounts WHERE organization_id = ${orgId}`;
   await q`DELETE FROM posting_profile_versions WHERE posting_profile_id IN (SELECT id FROM posting_profiles WHERE organization_id = ${orgId})`;
   await q`DELETE FROM posting_profiles WHERE organization_id = ${orgId}`;
-  await q`DELETE FROM tax_codes WHERE organization_id = ${orgId}`;
   await q`DELETE FROM accounting_periods WHERE organization_id = ${orgId}`;
   await q`DELETE FROM fiscal_years WHERE organization_id = ${orgId}`;
   await q`DELETE FROM document_number_sequences WHERE organization_id = ${orgId}`;
   await q`DELETE FROM account_versions WHERE account_id IN (SELECT id FROM accounts WHERE organization_id = ${orgId})`;
   await q`DELETE FROM accounts WHERE organization_id = ${orgId}`;
   await q`DELETE FROM fiscal_calendar_policy WHERE organization_id = ${orgId}`;
-  await q`DELETE FROM tax_policy WHERE organization_id = ${orgId}`;
   await q`DELETE FROM numbering_policy WHERE organization_id = ${orgId}`;
   await q`DELETE FROM posting_policy WHERE organization_id = ${orgId}`;
   await q`DELETE FROM dimension_policy WHERE organization_id = ${orgId}`;
@@ -119,7 +115,6 @@ async function approvedBill(who: RequestIdentity, profileCode: string) {
       dueDate: new Date(`${YEAR}-04-15T00:00:00.000Z`),
       currencyCode: 'USD',
       subtotal: amount,
-      vatAmount: new Decimal(0),
       totalAmount: amount,
       outstandingAmount: amount,
       documentStatus: 'APPROVED',
@@ -127,8 +122,7 @@ async function approvedBill(who: RequestIdentity, profileCode: string) {
       createdBy: who.userId,
       lines: {
         create: [{
-          lineNumber: 1, description: 'ST line', netAmount: amount, vatAmount: new Decimal(0),
-          grossAmount: amount, expenseProfileCode: profileCode,
+          lineNumber: 1, description: 'ST line', netAmount: amount, expenseProfileCode: profileCode,
         }],
       },
     },
@@ -156,8 +150,7 @@ describe('ADR-040 accounting setup (DB)', () => {
 
     expect(result.fiscalYear.name).toBe(`FY${YEAR}`);
     expect(result.bankAccountsCreated).toBe(2);
-    expect(result.taxCodesCreated).toBe(2);
-    expect(result.accountsCreated).toBe(79 + 2); // chart + 2 banks; no input-VAT asset (ACC-TAX-001)
+    expect(result.accountsCreated).toBe(78 + 2); // chart + 2 banks; no VAT accounts (ADR-050)
     expect(await prisma.account.count({ where: { organizationId: orgId } })).toBe(result.accountsCreated);
     expect(await prisma.postingProfile.count({ where: { organizationId: orgId } })).toBe(result.postingProfilesCreated);
 
@@ -188,11 +181,8 @@ describe('ADR-040 accounting setup (DB)', () => {
       ['10100', INPUT.banks[0]!.accountNumber, true, true],
     ]);
 
-    // VAT codes, linked into the tax policy.
-    const codes = await prisma.taxCode.findMany({ where: { organizationId: orgId }, orderBy: { code: 'asc' } });
-    expect(codes.map((c) => [c.code, c.recoveryMethod])).toEqual([['VAT5_IN', 'NON_RECOVERABLE'], ['VAT5_OUT', 'FULLY_RECOVERABLE']]);
-    const taxPolicy = await prisma.taxPolicy.findUnique({ where: { organizationId: orgId } });
-    expect(taxPolicy!.defaultOutputTaxCodeId).toBe(codes.find((c) => c.code === 'VAT5_OUT')!.id);
+    // No VAT accounts (ADR-050).
+    expect(await prisma.account.count({ where: { organizationId: orgId, code: { in: ['14100', '22000'] } } })).toBe(0);
 
     // Fiscal year: OPEN, 12 OPEN monthly periods, retained earnings 31000.
     const fy = await prisma.fiscalYear.findUnique({ where: { id: result.fiscalYear.id }, include: { periods: true } });
@@ -320,42 +310,6 @@ describe('ADR-040 accounting setup (DB)', () => {
     });
   });
 
-  /**
-   * ADR-041 — Finance configures tax before ACCO's chart is signed off, so tax codes no longer
-   * count as a partial setup: setup runs, keeps the default Finance chose (ignoring its own VAT
-   * answer) and links the sales code to the new Output VAT account.
-   */
-  it('ST-08: tax configured before the chart is kept; setup runs and links the Output VAT account', async () => {
-    const who = await makeOrg();
-    const exempt = await prisma.taxCode.create({
-      data: {
-        organizationId: who.activeOrganizationId, code: 'EXEMPT', name: 'No tax', rate: 0, taxType: 'VAT',
-        direction: 'OUTPUT', recoveryMethod: 'FULLY_RECOVERABLE',
-        effectiveFrom: new Date(`${YEAR}-01-01T00:00:00.000Z`), createdBy: who.userId,
-      },
-    });
-    await prisma.taxPolicy.create({
-      data: { organizationId: who.activeOrganizationId, defaultOutputTaxCodeId: exempt.id, updatedBy: who.userId },
-    });
-    const setup = makeSetup();
-    expect(await setup.getStatus(who)).toMatchObject({
-      canInstall: true, reason: 'READY', existingRecords: [],
-      defaultSalesTax: { code: 'EXEMPT', ratePercent: '0' },
-    });
-
-    const result = await setup.install(who, INPUT);
-
-    expect(result.taxCodesCreated).toBe(0);
-    const codes = await prisma.taxCode.findMany({ where: { organizationId: who.activeOrganizationId } });
-    expect(codes.map((c) => c.code)).toEqual(['EXEMPT']);
-    const outputVat = await prisma.account.findFirst({ where: { organizationId: who.activeOrganizationId, code: '22000' } });
-    expect(codes[0]!.outputTaxAccountId).toBe(outputVat!.id);
-    const policy = await prisma.taxPolicy.findUnique({ where: { organizationId: who.activeOrganizationId } });
-    expect(policy!.defaultOutputTaxCodeId).toBe(exempt.id);
-    // ACC-TAX-001: no recoverable input-VAT asset.
-    expect(await prisma.account.count({ where: { organizationId: who.activeOrganizationId, code: '14100' } })).toBe(0);
-  });
-
   it('ST-09: three concurrent installs → exactly one succeeds, two are 409', async () => {
     const who = await makeOrg();
     const results = await Promise.allSettled([1, 2, 3].map(() => makeSetup().install(who, { ...INPUT, banks: [] })));
@@ -365,7 +319,7 @@ describe('ADR-040 accounting setup (DB)', () => {
     for (const r of refused) {
       expect(r.reason).toMatchObject({ status: 409, response: { errorCode: 'ACCOUNTING_ALREADY_SET_UP' } });
     }
-    expect(await prisma.account.count({ where: { organizationId: who.activeOrganizationId } })).toBe(79); // the chart, no banks; no input-VAT asset (ACC-TAX-001)
+    expect(await prisma.account.count({ where: { organizationId: who.activeOrganizationId } })).toBe(78); // the chart, no banks
   });
 
   it('ST-03: a failure part-way rolls the whole install back', async () => {

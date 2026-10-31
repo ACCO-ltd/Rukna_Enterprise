@@ -31,12 +31,6 @@ vi.mock('@/features/clients/hooks/use-clients', () => ({
     ],
   }),
 }));
-vi.mock('./invoice-tax-field', () => ({
-  InvoiceTaxField: () => null,
-  taxCodeBody: () => ({}),
-  useInvoiceTaxChoice: () => ({ rateFraction: '0.05', blocked: false }),
-  useInvoiceTaxErrorMessage: () => () => null,
-}));
 const approval = vi.hoisted(() => ({ above: null as string | null }));
 vi.mock('../hooks/use-accounting', () => ({
   useApprovalSettings: () => ({ data: { invoiceApprovalAbove: approval.above }, isSuccess: true }),
@@ -61,7 +55,7 @@ async function fillLine(user: ReturnType<typeof userEvent.setup>, n: number, des
 }
 
 describe('ManualInvoiceForm (ADR-048)', () => {
-  it('prices the lines, adds tax at the chosen rate, and saves the draft', async () => {
+  it('prices the lines and saves the draft', async () => {
     const user = userEvent.setup();
     mutateAsync.mockResolvedValue({ id: 'inv-9' });
     renderWithProviders(<ManualInvoiceForm />);
@@ -74,11 +68,9 @@ describe('ManualInvoiceForm (ADR-048)', () => {
     await user.type(screen.getByLabelText('PO / reference'), ' PO-4471 ');
     await user.type(screen.getByLabelText('Note to client'), 'Hire for site B.');
 
-    // 1350 + 25.03 (25.025 rounds half-up) = 1375.03; 5% tax = 68.75.
+    // 1350 + 25.03 (25.025 rounds half-up) = 1375.03.
     const totals = screen.getByText('Total due').closest('dl')!;
     expect(within(totals).getByText('$1,375.03')).toBeInTheDocument();
-    expect(within(totals).getByText('$68.75')).toBeInTheDocument();
-    expect(within(totals).getByText('$1,443.78')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Save draft' }));
     expect(mutateAsync).toHaveBeenCalledWith(

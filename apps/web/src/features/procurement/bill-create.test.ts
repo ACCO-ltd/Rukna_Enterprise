@@ -40,7 +40,6 @@ const DIRECT: DirectLineDraft = {
   expenseProfileCode: 'OFFICE_EXPENSE',
   quantity: '1',
   unitPrice: '400.00',
-  vatAmount: '0',
   netOverride: '',
   costLine: '',
 };
@@ -53,7 +52,6 @@ const PO_LINE: PoLineDraft = {
   received: { acceptedMinor: 185_000, grnNumbers: ['GR-0081'] },
   quantity: '185',
   unitPrice: '10.00',
-  vatAmount: '0',
   netOverride: '',
   expenseProfileCode: 'MATERIAL_PURCHASE',
   costTargetLabel: null,
@@ -62,22 +60,12 @@ const PO_LINE: PoLineDraft = {
 // ─── Direct lines (was billLineError) ─────────────────────────────────────────
 
 describe('directLineErrors', () => {
-  it('accepts a complete overhead line, including zero VAT', () => {
+  it('accepts a complete overhead line', () => {
     expect(directLineErrors(DIRECT, NO_PROJECT)).toEqual({});
   });
 
   it('requires a description', () => {
     expect(directLineErrors({ ...DIRECT, description: '   ' }, NO_PROJECT)).toEqual({ description: 'description' });
-  });
-
-  /**
-   * A4. `vatAmount` is `@IsNumber() @Min(0)` with no default. An empty field must not be sent
-   * as 0: "no VAT" and "VAT not entered yet" are different facts on a document that posts to
-   * the ledger, and only one of them is a decision the user made.
-   */
-  it('requires VAT to be typed, and accepts an explicit zero', () => {
-    expect(directLineErrors({ ...DIRECT, vatAmount: '' }, NO_PROJECT)).toEqual({ vat: 'vat' });
-    expect(directLineErrors({ ...DIRECT, vatAmount: '0' }, NO_PROJECT)).toEqual({});
   });
 
   it('rejects a negative or unparseable price rather than reading it as zero', () => {
@@ -100,7 +88,6 @@ describe('directLineErrors', () => {
       profile: 'profile',
       quantity: 'quantity',
       unitPrice: 'unitPrice',
-      vat: 'vat',
     });
   });
 
@@ -147,11 +134,6 @@ describe('poLineErrors', () => {
     expect(poLineErrors({ ...PO_LINE, unitPrice: '' })).toEqual({ unitPrice: 'unitPrice' });
   });
 
-  it('requires VAT to be typed, accepting an explicit zero', () => {
-    expect(poLineErrors({ ...PO_LINE, vatAmount: '' })).toEqual({ vat: 'vat' });
-    expect(poLineErrors({ ...PO_LINE, vatAmount: '0' })).toEqual({});
-  });
-
   it('requires an expense profile', () => {
     expect(poLineErrors({ ...PO_LINE, expenseProfileCode: '' })).toEqual({ profile: 'profile' });
   });
@@ -160,22 +142,22 @@ describe('poLineErrors', () => {
 // ─── Totals (was billTotalMinor / poBillTotalMinor) ───────────────────────────
 
 describe('billTotalsMinor', () => {
-  it('sums quantity × price as the subtotal, plus VAT, in minor units', () => {
-    // 285 × 10.00 = 2850.00; 4 × 25.00 = 100.00 → subtotal 2950.00; VAT 5.00 → 2955.00.
+  it('sums quantity × price as the total, in minor units', () => {
+    // 285 × 10.00 = 2850.00; 4 × 25.00 = 100.00 → 2950.00.
     expect(
       billTotalsMinor([
-        { quantity: '285', unitPrice: '10.00', vatAmount: '0', netOverride: '' },
-        { quantity: '4', unitPrice: '25.00', vatAmount: '5.00', netOverride: '' },
+        { quantity: '285', unitPrice: '10.00', netOverride: '' },
+        { quantity: '4', unitPrice: '25.00', netOverride: '' },
       ]),
-    ).toEqual({ subtotal: 295000, vat: 500, total: 295500 });
+    ).toEqual({ total: 295000 });
   });
 
   it('treats an empty line as zero rather than NaN', () => {
-    expect(billTotalsMinor([{ ...emptyDirectLine(), quantity: '' }])).toEqual({ subtotal: 0, vat: 0, total: 0 });
+    expect(billTotalsMinor([{ ...emptyDirectLine(), quantity: '' }])).toEqual({ total: 0 });
   });
 
   it('carries the quantity scale change correctly (3dp × 2dp → 2dp)', () => {
-    expect(billTotalsMinor([{ quantity: '2.5', unitPrice: '3.33', vatAmount: '0', netOverride: '' }]).subtotal).toBe(833);
+    expect(billTotalsMinor([{ quantity: '2.5', unitPrice: '3.33', netOverride: '' }]).total).toBe(833);
   });
 });
 
@@ -279,7 +261,6 @@ describe('seedPoLine', () => {
       quantity: '285',
       unitPrice: '10.00',
       unit: 'bag',
-      vatAmount: '',
       expenseProfileCode: '',
       costTargetLabel: 'WBR-26-0065 · 03.10 Concrete',
       received: { acceptedMinor: 0, grnNumbers: [] },
@@ -314,7 +295,7 @@ describe('overBilling', () => {
 
 describe('buildPoBillPayload', () => {
   it('sends the PO, the billed figures and the computed net — and no cost coding (D7)', () => {
-    const payload = buildPoBillPayload(HEADER, 'po-1', [{ ...PO_LINE, vatAmount: '12.50' }]);
+    const payload = buildPoBillPayload(HEADER, 'po-1', [PO_LINE]);
     expect(payload).toEqual({
       supplierId: 'sup-1',
       purchaseOrderId: 'po-1',
@@ -328,7 +309,6 @@ describe('buildPoBillPayload', () => {
           quantity: 185,
           unitPrice: 10,
           netAmount: 1850,
-          vatAmount: 12.5,
           expenseProfileCode: 'MATERIAL_PURCHASE',
         },
       ],
@@ -346,7 +326,6 @@ describe('buildDirectBillPayload', () => {
       quantity: 1,
       unitPrice: 400,
       netAmount: 400,
-      vatAmount: 0,
       expenseProfileCode: 'OFFICE_EXPENSE',
     });
   });
@@ -376,8 +355,6 @@ describe('billToFormValues', () => {
     quantity: '1.0000',
     unitPrice: '400.0000',
     netAmount: '400.00',
-    vatAmount: '0.00',
-    grossAmount: '400.00',
     expenseProfileCode: 'OFFICE_EXPENSE',
     projectId: null,
     boqNodeId: null,
@@ -416,7 +393,6 @@ describe('billToFormValues', () => {
       expenseProfileCode: 'OFFICE_EXPENSE',
       quantity: '1',
       unitPrice: '400.00',
-      vatAmount: '0.00',
       costLine: '',
     });
   });
@@ -462,7 +438,7 @@ describe('billToFormValues', () => {
       supplierInvoiceNumber: 'INV-5531',
       projectId: 'prj-1',
       lines: [
-        { description: 'Office rent', quantity: 1, unitPrice: 400, netAmount: 400, vatAmount: 0, boqNodeId: 'n1' },
+        { description: 'Office rent', quantity: 1, unitPrice: 400, netAmount: 400, boqNodeId: 'n1' },
       ],
     });
   });
@@ -476,7 +452,6 @@ describe('billToFormValues', () => {
             quantity: '185.0000',
             unitPrice: '10.0000',
             netAmount: '1850.00',
-            vatAmount: '5.00',
             expenseProfileCode: 'MATERIAL_PURCHASE',
           }),
         ],
@@ -488,7 +463,6 @@ describe('billToFormValues', () => {
         poLineId: null,
         quantity: '185',
         unitPrice: '10.00',
-        vatAmount: '5.00',
         netOverride: '',
         expenseProfileCode: 'MATERIAL_PURCHASE',
       },
@@ -505,7 +479,6 @@ describe('applyBilledFigures', () => {
     received: null,
     quantity: '285',
     unitPrice: '10.00',
-    vatAmount: '',
     netOverride: '',
     expenseProfileCode: '',
     costTargetLabel: null,
@@ -514,7 +487,6 @@ describe('applyBilledFigures', () => {
     poLineId,
     quantity,
     unitPrice: '9.50',
-    vatAmount: '0.00',
     netOverride: '',
     expenseProfileCode: 'MATERIAL_PURCHASE',
   });
@@ -525,7 +497,6 @@ describe('applyBilledFigures', () => {
     expect(out[0]).toMatchObject({
       poLineId: 'pol-1',
       unitPrice: '9.50',
-      vatAmount: '0.00',
       expenseProfileCode: 'MATERIAL_PURCHASE',
     });
   });
@@ -540,7 +511,7 @@ describe('applyBilledFigures', () => {
 // ─── Net: calculated, but can be overridden (Eng Ahmed, 2026-09-27) ────────────
 
 describe('net override', () => {
-  const line = { quantity: '200', unitPrice: '9.50', vatAmount: '0', netOverride: '' };
+  const line = { quantity: '200', unitPrice: '9.50', netOverride: '' };
 
   it('follows quantity × price while nothing is typed', () => {
     expect(lineNetMinor(line)).toBe(190000);
@@ -551,7 +522,7 @@ describe('net override', () => {
     const typed = { ...line, netOverride: '1995.00' };
     expect(lineNetMinor(typed)).toBe(199500);
     expect(netVariance(typed)).toEqual({ computedMinor: 190000, netMinor: 199500, diffMinor: 9500 });
-    expect(billTotalsMinor([typed]).subtotal).toBe(199500);
+    expect(billTotalsMinor([typed]).total).toBe(199500);
   });
 
   it('sends the typed net as the line net, alongside the quantity and price it differs from', () => {
@@ -586,8 +557,6 @@ describe('net override', () => {
           quantity: '200.0000',
           unitPrice: '9.5000',
           netAmount: '1995.00',
-          vatAmount: '0.00',
-          grossAmount: '1995.00',
           expenseProfileCode: 'MATERIAL_PURCHASE',
           projectId: null,
           boqNodeId: null,

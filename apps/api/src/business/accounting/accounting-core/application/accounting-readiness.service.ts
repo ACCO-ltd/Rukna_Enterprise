@@ -65,7 +65,6 @@ export class AccountingReadinessService {
       { subtype: 'ACCOUNTS_RECEIVABLE' as AccountSubtype, label: 'Accounts receivable control' },
       { subtype: 'ACCOUNTS_PAYABLE' as AccountSubtype, label: 'Accounts payable control' },
       { subtype: 'PROJECT_REVENUE' as AccountSubtype, label: 'Project revenue' },
-      { subtype: 'VAT_OUTPUT_PAYABLE' as AccountSubtype, label: 'Output VAT payable' },
       { subtype: 'CASH_AND_BANK' as AccountSubtype, label: 'Bank / cash' },
       { subtype: 'UNAPPLIED_CLIENT_RECEIPTS' as AccountSubtype, label: 'Unapplied client receipts' },
       { subtype: 'SUPPLIER_ADVANCE' as AccountSubtype, label: 'Supplier advance' },

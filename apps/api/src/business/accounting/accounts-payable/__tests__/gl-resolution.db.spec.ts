@@ -41,7 +41,6 @@ describe('ADR-045 P3 — server-side GL resolution for AP posting', () => {
         {
           description: 'Site cleaning',
           netAmount: amount,
-          vatAmount: 0,
           expenseProfileCode: env.postingProfileCode,
           projectId: env.projectId,
           spendCategoryId: env.spendCategoryId,

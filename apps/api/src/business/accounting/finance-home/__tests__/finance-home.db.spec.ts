@@ -28,7 +28,6 @@ beforeAll(async () => {
   home = new FinanceHomeService({ getClient: () => prisma } as never, new FinanceHomeRepository());
   for (const [code, name, accountClass, subtype] of [
     ['42100', 'Equipment hire income', 'INCOME', 'OTHER_INCOME'],
-    ['22000', 'Sales tax payable', 'LIABILITY', 'VAT_OUTPUT_PAYABLE'],
   ] as const) {
     const a = await prisma.account.create({ data: { id: `${env.orgId}-${code}`, organizationId: env.orgId, code, normalBalance: 'CREDIT', createdBy: env.identity.userId } });
     await prisma.accountVersion.create({
@@ -42,7 +41,7 @@ beforeAll(async () => {
     dueDate: openDay,
     currencyCode: 'USD',
     paymentTerms: 'Due on receipt',
-    lines: [{ description: 'Crane hire', quantity: '1', unitPrice: '1000.00', revenueAccountCode: '42100' }],
+    lines: [{ description: 'Crane hire', quantity: '1', unitPrice: '1050.00', revenueAccountCode: '42100' }],
   });
   await svc.clientInvoiceService.issue(env.identity, inv.id);
   await svc.customerReceiptService.receive(env.identity, {
@@ -64,7 +63,7 @@ it('FH-01: cash, aged receivables and the month come from the ledger', async () 
   const r = await home.home({ ...env.identity, permissions: [PERMISSIONS.accountingView] }, today);
 
   expect(r.cash?.accounts.find((a) => a.bankAccountId === env.bankAccountId)?.balance).toBe('400.00');
-  // 1000 + 5% tax = 1050, less 400 received.
+  // 1050 invoiced, less 400 received.
   expect(r.receivables).toMatchObject({ outstanding: '650.00', overdue: '650.00' });
   expect(r.receivables?.aging.find((b) => b.key === 'd31_60')).toEqual({ key: 'd31_60', amount: '650.00', count: 1 });
   expect(r.receivables?.topOverdue[0]).toMatchObject({ clientId: env.clientId, overdue: '650.00', oldestDaysLate: 45 });
@@ -99,7 +98,7 @@ it('FH-04: the payables aging includes opening bills; each side has its own perm
     data: {
       organizationId: env.orgId, supplierId: env.supplierId, supplierInvoiceNumber: 'OPEN-1', supplierInvoiceNumberNorm: 'OPEN1',
       billDate: new Date('2026-01-01'), dueDate: new Date('2026-01-31'), currencyCode: 'USD',
-      subtotal: 500, vatAmount: 0, totalAmount: 500, outstandingAmount: 500,
+      subtotal: 500, totalAmount: 500, outstandingAmount: 500,
       documentStatus: 'APPROVED', postingStatus: 'OPENING_BALANCE', createdBy: env.identity.userId,
     },
   });

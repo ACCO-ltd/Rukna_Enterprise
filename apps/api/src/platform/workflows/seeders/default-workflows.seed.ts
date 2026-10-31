@@ -115,7 +115,7 @@ async function seedGovernancePolicy(prisma: PrismaClient, organizationId: string
       priority: 100,
       configuration: {
         amountSource: 'REPORTING_AMOUNT_SNAPSHOT_AT_SUBMISSION',
-        pending: ['10,000–50,000 USD authority mapping', 'above 50,000 USD authority mapping', 'NET_OR_GROSS_VAT_BASIS'],
+        pending: ['10,000–50,000 USD authority mapping', 'above 50,000 USD authority mapping'],
       },
     },
     {

@@ -67,7 +67,6 @@ model Organization {
   departments              Department[]
   accounts                 Account[]
   fiscalYears              FiscalYear[]
-  taxCodes                 TaxCode[]
   treasuryGroups           TreasuryGroup[]
   postingProfiles          PostingProfile[]
   clientInvoices           ClientInvoice[]
@@ -2648,37 +2647,6 @@ model BankAccountSignatory {
   @@map("bank_account_signatories")
 }
 
-// ─── Tax ──────────────────────────────────────────────────────────────────────
-
-// For ACCO: recoveryMethod = NON_RECOVERABLE for input VAT.
-// NON_RECOVERABLE: vatAmount stored on SupplierBillLine for audit only.
-// Gross amount (net + VAT) posts to expense/inventory. No separate GL VAT line.
-model TaxCode {
-  id                 String         @id @default(cuid())
-  organizationId     String         @map("organization_id")
-  code               String         @db.VarChar(10)
-  name               String
-  rate               Decimal        @db.Decimal(7, 4)
-  taxType            TaxType        @map("tax_type")
-  // ADR-041 — which side the code applies to: OUTPUT (client invoices) or INPUT (purchases).
-  direction          TaxDirection
-  recoveryMethod     RecoveryMethod @map("recovery_method")
-  outputTaxAccountId String?        @map("output_tax_account_id")
-  inputTaxAccountId  String?        @map("input_tax_account_id")
-  effectiveFrom      DateTime       @map("effective_from") @db.Date
-  effectiveTo        DateTime?      @map("effective_to") @db.Date
-  status             TaxCodeStatus  @default(ACTIVE)
-  createdAt          DateTime       @default(now()) @map("created_at")
-  createdBy          String         @map("created_by")
-
-  organization   Organization    @relation(fields: [organizationId], references: [id])
-  clientInvoices ClientInvoice[]
-
-  @@unique([organizationId, code])
-  @@index([organizationId, status])
-  @@map("tax_codes")
-}
-
 // ─── Suppliers ────────────────────────────────────────────────────────────────
 
 model Supplier {
@@ -2935,26 +2903,19 @@ model ClientInvoice {
   contractId             String?          @map("contract_id")
   currencyCode           String           @map("currency_code") @db.VarChar(3)
   subtotal               Decimal          @db.Decimal(18, 2)
-  vatAmount              Decimal          @map("vat_amount") @db.Decimal(18, 2)
-  // ADR-041 — the sales tax code this invoice was raised at (null for invoices raised before tax
-  // codes, and for migration-loaded ones) and its rate in PERCENT, snapshotted: a later change to the
-  // code or the organisation's default never alters an invoice. Generation paths always set both;
-  // the default of 0 only covers direct writers that carry no tax.
-  taxCodeId              String?          @map("tax_code_id")
-  taxRate                Decimal          @default(0) @map("tax_rate") @db.Decimal(7, 4)
   totalAmount            Decimal          @map("total_amount") @db.Decimal(18, 2)
   outstandingAmount      Decimal          @map("outstanding_amount") @db.Decimal(18, 2)
   // ADR-046 §5 — the period breakdown of an IPC invoice. A certificate's figures are cumulative to
   // date; the invoice bills them minus what earlier IPC invoices on the contract already billed.
   // certifiedGrossAmount is null on every non-IPC invoice (and on IPC invoices raised before this).
-  // For an IPC invoice: subtotal = certifiedGross − otherDeductions (revenue and tax base) and
-  // totalAmount = subtotal + vatAmount − retentionAmount − advanceRecoveryAmount (amount due).
+  // For an IPC invoice: subtotal = certifiedGross − otherDeductions (revenue) and
+  // totalAmount = subtotal − retentionAmount − advanceRecoveryAmount (amount due).
   certifiedGrossAmount   Decimal?         @map("certified_gross_amount") @db.Decimal(18, 2)
   retentionAmount        Decimal          @default(0) @map("retention_amount") @db.Decimal(18, 2)
   advanceRecoveryAmount  Decimal          @default(0) @map("advance_recovery_amount") @db.Decimal(18, 2)
   otherDeductionsAmount  Decimal          @default(0) @map("other_deductions_amount") @db.Decimal(18, 2)
   // ADR-046 §5 — on the retention release invoice, the retention it bills (cleared from Retention
-  // Receivable). totalAmount = subtotal + vat − retention − advanceRecovery + retentionReleased.
+  // Receivable). totalAmount = subtotal − retention − advanceRecovery + retentionReleased.
   retentionReleasedAmount Decimal         @default(0) @map("retention_released_amount") @db.Decimal(18, 2)
   // ADR-048 — a hand-typed invoice for a non-contract sale (equipment hire, materials, services):
   // its amount is the sum of its `lines`, not copied from a contract source. Never carries a
@@ -2998,7 +2959,6 @@ model ClientInvoice {
   organization      Organization                @relation(fields: [organizationId], references: [id])
   client            Client                      @relation(fields: [clientId], references: [id])
   sourceIpc         InterimPaymentCertificate?  @relation(fields: [sourceIpcId], references: [id])
-  taxCode           TaxCode?                    @relation(fields: [taxCodeId], references: [id], onDelete: Restrict)
   sourceInstallment ContractPaymentInstallment? @relation(fields: [sourceInstallmentId], references: [id])
   // ADR-029 R-4 — the SEPARATE_CHARGE BOQ leaf a one-off invoice bills. SetNull, not Restrict: the
   // invoice is the durable billing record and outlives the node; a node is deactivated not deleted
@@ -3023,7 +2983,6 @@ model ClientInvoice {
   @@index([organizationId, clientId, postingStatus])
   @@index([organizationId, documentStatus])
   @@index([projectId])
-  @@index([taxCodeId])
   @@index([sourceRetentionContractId])
   @@map("client_invoices")
   attachments ClientInvoiceAttachment[]
@@ -3245,7 +3204,6 @@ model CreditNote {
   sourceVariationId    String?          @map("source_variation_id")
   reason               CreditNoteReason
   netAmount            Decimal          @map("net_amount") @db.Decimal(18, 2)
-  vatAmount            Decimal          @map("vat_amount") @db.Decimal(18, 2)
   totalAmount          Decimal          @map("total_amount") @db.Decimal(18, 2)
   accountingDate       DateTime         @map("accounting_date") @db.Date
   postingStatus        PostingStatus    @default(NOT_POSTED) @map("posting_status")
@@ -3417,7 +3375,6 @@ model SupplierBill {
   projectId                 String?         @map("project_id")
   departmentId              String?         @map("department_id")
   subtotal                  Decimal         @db.Decimal(18, 2)
-  vatAmount                 Decimal         @map("vat_amount") @db.Decimal(18, 2)
   totalAmount               Decimal         @map("total_amount") @db.Decimal(18, 2)
   outstandingAmount         Decimal         @map("outstanding_amount") @db.Decimal(18, 2)
   documentStatus            BillDocStatus   @default(DRAFT) @map("document_status")
@@ -3474,10 +3431,6 @@ model SupplierBill {
   attachments SupplierBillAttachment[]
 }
 
-// VAT on supplier bills (NON_RECOVERABLE per ACC-TAX-001):
-//   vatAmount stored for audit trail only.
-//   grossAmount (= netAmount + vatAmount) posts to expense/inventory.
-//   No separate GL VAT debit line.
 /// AP-4 — a credit the supplier gives against a posted bill: goods sent back, an overcharge, a
 /// discount agreed after the bill. Posts at once — it lowers what is owed and no money moves —
 /// Dr Accounts payable / Cr the bill's own cost lines in proportion, with the bill's project and
@@ -3526,10 +3479,6 @@ model SupplierBillLine {
   quantity            Decimal?            @db.Decimal(18, 4)
   unitPrice           Decimal?            @map("unit_price") @db.Decimal(18, 4)
   netAmount           Decimal             @map("net_amount") @db.Decimal(18, 2)
-  vatCodeId           String?             @map("vat_code_id")
-  vatAmount           Decimal             @map("vat_amount") @db.Decimal(18, 2)
-  // grossAmount = netAmount + vatAmount; this is the amount posted to expense/inventory GL
-  grossAmount         Decimal             @map("gross_amount") @db.Decimal(18, 2)
   // Resolved at post time: PostingProfile.code identifying expense/inventory account
   expenseProfileCode  String              @map("expense_profile_code") @db.VarChar(50)
   projectId           String?             @map("project_id")
@@ -4015,7 +3964,6 @@ model JournalLine {
   // the commitment ledger but not the GL, so project-level cost arrived in the accounts
   // as an unclassified bucket. See purchase-orders/domain/cost-target.policy.ts.
   spendCategoryId         String?        @map("spend_category_id")
-  taxCodeId               String?        @map("tax_code_id")
   createdAt               DateTime       @default(now()) @map("created_at")
 
   entry                 JournalEntry           @relation(fields: [journalEntryId], references: [id])
@@ -4171,16 +4119,6 @@ model FiscalCalendarPolicy {
   updatedAt            DateTime @updatedAt @map("updated_at")
 
   @@map("fiscal_calendar_policy")
-}
-
-model TaxPolicy {
-  organizationId         String   @id @map("organization_id")
-  defaultOutputTaxCodeId String?  @map("default_output_tax_code_id")
-  defaultInputTaxCodeId  String?  @map("default_input_tax_code_id")
-  updatedBy              String   @map("updated_by")
-  updatedAt              DateTime @updatedAt @map("updated_at")
-
-  @@map("tax_policy")
 }
 
 // What a client invoice PDF prints beyond the invoice itself: the "Bank Account Details" table
@@ -4766,8 +4704,6 @@ enum AccountSubtype {
   // Liabilities
   ACCOUNTS_PAYABLE
   CLIENT_ADVANCE_LIABILITY
-  VAT_OUTPUT_PAYABLE
-  VAT_INPUT_RECOVERABLE
   OTHER_CURRENT_LIABILITY
   OTHER_NON_CURRENT_LIABILITY
   // Equity
@@ -4796,7 +4732,7 @@ enum ControlPostingPolicy {
   UNRESTRICTED
   // AR, AP, Inventory — only posting engine may post
   SYSTEM_ONLY
-  // VAT, Bank — posting engine OR CFO-approved manual adjustment
+  // Bank — posting engine OR CFO-approved manual adjustment
   SYSTEM_OR_APPROVED_ADJUSTMENT
 }
 
@@ -4834,31 +4770,6 @@ enum BankAccountStatus {
   ACTIVE
   SUSPENDED
   CLOSED
-}
-
-enum TaxType {
-  VAT
-  WITHHOLDING
-  OTHER
-}
-
-enum RecoveryMethod {
-  FULLY_RECOVERABLE
-  // ACCO default: gross amount posts to expense (ACC-TAX-001)
-  NON_RECOVERABLE
-  PARTIALLY_RECOVERABLE
-}
-
-/// ADR-041 — OUTPUT codes tax client invoices; INPUT codes tax purchases.
-enum TaxDirection {
-  OUTPUT
-  INPUT
-}
-
-enum TaxCodeStatus {
-  ACTIVE
-  INACTIVE
-  SUPERSEDED
 }
 
 enum ProfileStatus {
@@ -5380,7 +5291,6 @@ model PurchaseOrderLine {
   unitPrice               Decimal             @map("unit_price") @db.Decimal(18, 4)
   extendedAmount          Decimal             @map("extended_amount") @db.Decimal(18, 2)
   spendCategoryId         String?             @map("spend_category_id")
-  taxCodeId               String?             @map("tax_code_id")
   // Cost-target (A3/D7) — the authoritative project cost attribution, captured once here.
   // Both set = a project-cost-relevant line (boqNode is a leaf cost node on projectId's BOQ);
   // both null = a non-project/org/overhead line. Half-specified is rejected by the service.

@@ -85,8 +85,8 @@ export class ProjectFinancialPositionRepository {
    * different things — COMMITTED is ordered and not yet delivered, ACCRUED is delivered
    * and not yet billed — and only one of them is a commitment anyone can still cancel.
    * Summing them also hid a defect: because goods receipt accrues the purchase-order
-   * value while a posted bill releases the bill's gross amount, the combined figure
-   * goes NEGATIVE by the VAT once a project is fully billed, and "Remaining committed:
+   * value while a posted bill releases the bill's amount, the combined figure
+   * goes NEGATIVE by any price difference once a project is fully billed, and "Remaining committed:
    * -$2,000" is not a number anyone can act on.
    *
    * ACTUAL is excluded from both — it is already counted in the GL actual cost.
@@ -307,13 +307,11 @@ export class ProjectFinancialPositionRepository {
       }),
       prisma.creditNote.aggregate({
         where: { organizationId, postingStatus: 'POSTED', invoice: { projectId } },
-        _sum: { totalAmount: true, vatAmount: true },
+        _sum: { totalAmount: true },
       }),
     ]);
     const invoiced = new Decimal((invoices._sum.subtotal ?? 0).toString());
-    const credited = new Decimal((credits._sum.totalAmount ?? 0).toString()).minus(
-      new Decimal((credits._sum.vatAmount ?? 0).toString()),
-    );
+    const credited = new Decimal((credits._sum?.totalAmount ?? 0).toString());
     return invoiced.minus(credited);
   }
 

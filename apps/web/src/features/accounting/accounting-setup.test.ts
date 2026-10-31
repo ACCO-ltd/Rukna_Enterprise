@@ -12,7 +12,6 @@ import {
   initialSetupDraft,
   existingRecordsList,
   setupConflict,
-  parseVatRate,
   previewAccountCount,
   setupProblems,
   toSetupBody,
@@ -42,7 +41,6 @@ const TEMPLATE: SetupTemplate = {
     row({ code: '10100', name: 'Bank 1', parentCode: '10000', conditional: 'BANK' }),
     row({ code: '10110', name: 'Bank 2', parentCode: '10000', conditional: 'BANK' }),
     row({ code: '10900', name: 'Petty cash', parentCode: '10000' }),
-    row({ code: '14100', name: 'Input VAT recoverable', parentCode: '10000', conditional: 'VAT' }),
     row({
       code: '20000',
       name: 'Accounts payable',
@@ -63,8 +61,6 @@ const TEMPLATE: SetupTemplate = {
 
 function draft(overrides: Partial<SetupDraft> = {}): SetupDraft {
   return {
-    vatMode: 'none',
-    vatRate: '',
     banks: [
       { key: 'b1', accountName: 'Main operating', bankName: 'Salaam Bank', accountNumber: '' },
     ],
@@ -74,34 +70,12 @@ function draft(overrides: Partial<SetupDraft> = {}): SetupDraft {
   };
 }
 
-describe('parseVatRate', () => {
-  it.each([
-    ['5', 5],
-    ['15.5', 15.5],
-    ['100', 100],
-    [' 7.25 ', 7.25],
-  ])('accepts %s', (raw, expected) => {
-    expect(parseVatRate(raw)).toBe(expected);
-  });
-
-  it.each(['', '0', '0.00', '100.01', '150', '-5', 'abc', '5.123', '5,5'])('refuses %s', (raw) => {
-    expect(parseVatRate(raw)).toBeNull();
-  });
-});
-
 describe('setupProblems', () => {
-  it('asks for a VAT decision rather than defaulting one', () => {
+  it('starts this year, in January, with one bank row', () => {
     const initial = initialSetupDraft(new Date(2026, 8, 30));
-    expect(initial.vatMode).toBe('');
     expect(initial.year).toBe('2026');
     expect(initial.startMonth).toBe(1);
-    expect(setupProblems(initial).vatChoice).toBe(true);
-  });
-
-  it('requires a valid rate only when VAT is charged', () => {
-    expect(setupProblems(draft({ vatMode: 'none', vatRate: 'x' })).vatRate).toBe(false);
-    expect(setupProblems(draft({ vatMode: 'charged', vatRate: '0' })).vatRate).toBe(true);
-    expect(setupProblems(draft({ vatMode: 'charged', vatRate: '5' })).vatRate).toBe(false);
+    expect(initial.banks).toHaveLength(1);
   });
 
   it('names the missing fields of each bank row', () => {
@@ -135,12 +109,10 @@ describe('setupProblems', () => {
 });
 
 describe('toSetupBody', () => {
-  it('sends the rate when VAT is charged and omits an empty account number', () => {
+  it('omits an empty account number', () => {
     expect(
       toSetupBody(
         draft({
-          vatMode: 'charged',
-          vatRate: '5',
           banks: [
             { key: 'a', accountName: ' Main ', bankName: 'Salaam Bank', accountNumber: '' },
             { key: 'b', accountName: 'Payroll', bankName: 'Premier', accountNumber: ' 0042 ' },
@@ -151,17 +123,12 @@ describe('toSetupBody', () => {
       ),
     ).toEqual({
       templateId: 'CONSTRUCTION',
-      vat: { charged: true, ratePercent: 5 },
       banks: [
         { accountName: 'Main', bankName: 'Salaam Bank' },
         { accountName: 'Payroll', bankName: 'Premier', accountNumber: '0042' },
       ],
       fiscalYear: { year: 2027, startMonth: 7 },
     });
-  });
-
-  it('sends no rate when VAT is not charged', () => {
-    expect(toSetupBody(draft({ vatMode: 'none', vatRate: '5' })).vat).toEqual({ charged: false });
   });
 });
 
@@ -181,27 +148,18 @@ describe('fiscalYearName', () => {
 });
 
 describe('buildChartPreview', () => {
-  it('drops VAT rows when VAT is not charged, and keeps them when it is', () => {
-    const without = buildChartPreview(TEMPLATE, { vatCharged: false, bankNames: [] });
-    const withVat = buildChartPreview(TEMPLATE, { vatCharged: true, bankNames: [] });
-    const codes = (groups: typeof without) =>
-      groups.flatMap((g) => g.rows.map((r) => r.account.code));
-    expect(codes(without)).not.toContain('14100');
-    expect(codes(withVat)).toContain('14100');
-    expect(previewAccountCount(withVat)).toBe(previewAccountCount(without) + 1);
+  it('keeps every template row', () => {
+    expect(previewAccountCount(buildChartPreview(TEMPLATE, { bankNames: [] }))).toBe(TEMPLATE.accounts.length);
   });
 
   it('names bank rows after the banks typed, in order', () => {
-    const groups = buildChartPreview(TEMPLATE, {
-      vatCharged: false,
-      bankNames: ['Main operating', 'Payroll'],
-    });
+    const groups = buildChartPreview(TEMPLATE, { bankNames: ['Main operating', 'Payroll'] });
     const names = groups[0]!.rows.map((r) => r.displayName);
     expect(names).toEqual(['Current assets', 'Main operating', 'Payroll', 'Petty cash']);
   });
 
   it('groups by class in ledger order and indents children under their parent', () => {
-    const groups = buildChartPreview(TEMPLATE, { vatCharged: false, bankNames: [] });
+    const groups = buildChartPreview(TEMPLATE, { bankNames: [] });
     expect(groups.map((g) => g.accountClass)).toEqual(['ASSET', 'LIABILITY', 'COST_OF_SALES']);
     const materials = groups[2]!.rows;
     expect(materials.map((r) => [r.account.code, r.depth])).toEqual([
@@ -227,17 +185,17 @@ describe('setupConflict', () => {
     expect(
       setupConflict(
         new ApiError(409, 'Partially set up', 'ACCOUNTING_PARTIALLY_SET_UP', [], {
-          existingRecords: ['TAX_CODES', 'BANK_ACCOUNTS'],
+          existingRecords: ['POSTING_PROFILES', 'BANK_ACCOUNTS'],
         }),
       ),
-    ).toEqual({ kind: 'partial', existingRecords: ['TAX_CODES', 'BANK_ACCOUNTS'] });
+    ).toEqual({ kind: 'partial', existingRecords: ['POSTING_PROFILES', 'BANK_ACCOUNTS'] });
   });
 
   it('lists the records in plain words', () => {
     const label = (r: string) => r.toLowerCase().replace('_', ' ');
-    expect(existingRecordsList(['TAX_CODES'], label)).toBe('tax codes');
-    expect(existingRecordsList(['TAX_CODES', 'BANK_ACCOUNTS', 'FISCAL_YEARS'], label)).toBe(
-      'tax codes, bank accounts, and fiscal years',
+    expect(existingRecordsList(['BANK_ACCOUNTS'], label)).toBe('bank accounts');
+    expect(existingRecordsList(['POSTING_PROFILES', 'BANK_ACCOUNTS', 'FISCAL_YEARS'], label)).toBe(
+      'posting profiles, bank accounts, and fiscal years',
     );
   });
 });

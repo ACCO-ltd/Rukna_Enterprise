@@ -2,249 +2,111 @@
 
 import { useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import {
-  Alert,
-  FilterBar,
-  FilterField,
-  Select,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableScroll,
-} from '@erp/ui';
+import { EmptyState, FilterBar, FilterField, Select, SkeletonTable } from '@erp/ui';
 
-import { formatMoney } from '@/lib/format';
-import { MONEY_SCALE, fromMinorUnits, sumMinorUnits } from '@/lib/money';
+import { ListPageHeader } from '@/components/layout/list-page-header';
+import { LoadError } from '@/components/load-error';
+import { MONEY_SCALE, fromMinorUnits, toMinorUnits } from '@/lib/money';
 
-import { useFiscalYears, useMonthlyPL } from '../hooks/use-accounting';
+import { useAccounts, useFiscalYears, useMonthlyPL } from '../hooks/use-accounting';
 import { exportCsv, reportFilename } from '../lib/export-csv';
+import { ledgerHref } from '../lib/report-links';
+import { figuresOf, statementSections } from '../statement';
 import type { MonthlyPLColumn } from '../types';
 import { ReportActions } from './report-actions';
-import { profitLossHref } from '../lib/report-links';
-import Link from 'next/link';
-import { LoadError } from '@/components/load-error';
+import { StatementTable, type StatementBlock } from './statement-table';
 
+/**
+ * R — the profit and loss month by month across a fiscal year: every account down the side, the
+ * months across, the year in the last column. Each account opens its ledger for the year.
+ */
 export function MonthlyComparisonReport() {
   const t = useTranslations('accounting.monthlyPL');
-  const tShared = useTranslations('common');
-  const locale = useLocale() as 'en' | 'ar';
+  const tPl = useTranslations('accounting.profitLoss');
+  const tClass = useTranslations('accounting.chartOfAccounts.classSection');
+  const locale = useLocale() as 'en';
 
   const years = useFiscalYears();
-
-  // The chosen year, DERIVED rather than synchronised into state by an effect. Defaulting
-  // with `useEffect(() => setSelected(...))` renders once with an empty picker, once more to
-  // fill it, and needs a guard against overwriting a real choice — all to express "the first
-  // one unless the user picked another", which is what this line says.
+  const accounts = useAccounts();
   const [chosenId, setChosenId] = useState('');
   const fiscalYearId = chosenId || years.data?.[0]?.id || '';
-
+  const year = (years.data ?? []).find((y) => y.id === fiscalYearId);
   const report = useMonthlyPL(fiscalYearId);
-  const yearName = (years.data ?? []).find((y) => y.id === fiscalYearId)?.name;
-  // Step 4 — each month opens its own Profit & Loss, which drills on to the ledger.
-  const periodRange = new Map(
-    ((years.data ?? []).find((y) => y.id === fiscalYearId)?.periods ?? []).map((p) => [
-      p.periodNumber,
-      { from: p.startDate.slice(0, 10), to: p.endDate.slice(0, 10) },
-    ]),
-  );
+  const columns: MonthlyPLColumn[] = report.data?.columns ?? [];
 
-  const columns = report.data && report.data !== null ? report.data.columns : [];
+  const monthLabel = (c: MonthlyPLColumn) => {
+    const p = year?.periods?.find((x) => x.periodNumber === c.periodNumber);
+    return p ? new Date(`${p.startDate.slice(0, 10)}T00:00:00Z`).toLocaleString(locale, { month: 'short', timeZone: 'UTC' }) : c.periodName;
+  };
+
+  const blocks: StatementBlock[] = (() => {
+    if (columns.length === 0) return [];
+    const perMonth = columns.map((c) => figuresOf(c.lines ?? []));
+    // The year column: each account summed across the months.
+    const yearFigures = new Map<string, string>();
+    for (const m of perMonth) for (const [id, v] of m) yearFigures.set(id, fromMinorUnits(toMinorUnits(yearFigures.get(id) ?? '0', MONEY_SCALE) + toMinorUnits(v, MONEY_SCALE), MONEY_SCALE));
+    const classOf = new Map(columns.flatMap((c) => (c.lines ?? []).map((l) => [l.accountId, { accountClass: l.accountClass, code: l.accountCode, name: l.accountName }] as const)));
+    const [income, cos, expense] = statementSections(accounts.data ?? [], [...perMonth, yearFigures], ['INCOME', 'COST_OF_SALES', 'EXPENSE'], classOf);
+    const sum = (key: keyof MonthlyPLColumn) => {
+      const months = columns.map((c) => toMinorUnits(String(c[key]), MONEY_SCALE));
+      return [...months, months.reduce((a, b) => a + b, 0)];
+    };
+    const range = year ? { from: year.startDate.slice(0, 10), to: year.endDate.slice(0, 10) } : {};
+    const hrefFor = (id: string) => ledgerHref(id, range);
+    const out: StatementBlock[] = [{ kind: 'section', key: 'income', label: tClass('INCOME'), lines: income!.lines, totals: sum('revenue'), totalLabel: tPl('totalIncome'), hrefFor }];
+    if (cos!.lines.length > 0) {
+      out.push({ kind: 'section', key: 'cos', label: tClass('COST_OF_SALES'), lines: cos!.lines, totals: sum('costOfSales'), totalLabel: tPl('totalCostOfSales'), hrefFor });
+      out.push({ kind: 'summary', key: 'gross', label: tPl('grossProfit'), amounts: sum('grossProfit') });
+    }
+    out.push({ kind: 'section', key: 'expense', label: tClass('EXPENSE'), lines: expense!.lines, totals: sum('expenses'), totalLabel: tPl('totalExpenses'), hrefFor });
+    out.push({ kind: 'summary', key: 'net', label: tPl('netIncome'), amounts: sum('netIncome'), strong: true });
+    return out;
+  })();
+
+  const posted = columns.some((c) => (c.lines ?? []).length > 0);
 
   const handleExport = () => {
-    if (columns.length === 0) return;
-    const rows = columns.map((column) => [
-      column.periodName,
-      column.revenue,
-      column.costOfSales,
-      column.grossProfit,
-      column.expenses,
-      column.netIncome,
-    ]);
+    if (!posted) return;
+    const ids = new Map<string, { code: string; name: string }>();
+    for (const c of columns) for (const l of c.lines ?? []) ids.set(l.accountId, { code: l.accountCode, name: l.accountName });
     exportCsv(
-      reportFilename('monthly-comparison', yearName),
-      [
-        t('csvPeriod'),
-        t('colRevenue'),
-        t('colCostOfSales'),
-        t('colGrossProfit'),
-        t('colExpenses'),
-        t('colNetIncome'),
-      ],
-      rows,
+      reportFilename('monthly-comparison', year?.name),
+      [t('csvCode'), t('csvName'), ...columns.map((c) => c.periodName)],
+      [...ids].map(([id, a]) => [a.code, a.name, ...columns.map((c) => c.lines?.find((l) => l.accountId === id)?.amount ?? '0.00')]),
     );
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
+      <ListPageHeader title={t('title')} actions={<ReportActions onExport={handleExport} exportDisabled={!posted} />} />
+
       {years.isPending ? (
-        <div role="status" aria-live="polite">
-          <span className="sr-only">{tShared('loading')}</span>
-          <div
-            className="h-64 animate-pulse rounded-panel border border-border bg-muted"
-            aria-hidden="true"
-          />
-        </div>
+        <SkeletonTable rows={8} columns={6} label={t('title')} />
       ) : years.data?.length === 0 ? (
-        <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-12 text-center">
-          <p className="text-sm font-medium text-foreground">{t('noFiscalYears')}</p>
-          <p className="mx-auto mt-1 max-w-prose text-sm text-muted-foreground">
-            {t('noFiscalYearsHint')}
-          </p>
-        </div>
+        <EmptyState title={t('noFiscalYears')} />
       ) : (
         <>
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <FilterBar>
-              <FilterField id="mpl-year" label={t('fiscalYearLabel')}>
-                <Select
-                  id="mpl-year"
-                  value={fiscalYearId}
-                  onChange={(value) => setChosenId(value)}
-                >
-                  <option value="">{t('selectFiscalYear')}</option>
-                  {(years.data ?? []).map((year) => (
-                    <option key={year.id} value={year.id}>
-                      {year.name}
-                    </option>
-                  ))}
-                </Select>
-              </FilterField>
-            </FilterBar>
+          <FilterBar>
+            <FilterField id="mpl-year" label={t('fiscalYearLabel')}>
+              <Select id="mpl-year" value={fiscalYearId} onChange={(value) => setChosenId(value)}>
+                {(years.data ?? []).map((y) => (
+                  <option key={y.id} value={y.id}>{y.name}</option>
+                ))}
+              </Select>
+            </FilterField>
+          </FilterBar>
 
-            <ReportActions onExport={handleExport} exportDisabled={columns.length === 0} />
-          </div>
-
-          {report.isPending ? (
-            <div role="status" aria-live="polite">
-              <span className="sr-only">{tShared('loading')}</span>
-              <div
-                className="h-64 animate-pulse rounded-panel border border-border bg-muted"
-                aria-hidden="true"
-              />
-            </div>
-          ) : report.isError ? (
+          {report.isError ? (
             <LoadError message={t('loadFailed')} onRetry={() => void report.refetch()} />
-          ) : /* The endpoint answers 200 with a null body for an unknown fiscal year rather
-                than 404, so the null has to be interpreted here. */
-          report.data === null ? (
-            <Alert variant="warning" messages={[t('notFound')]} />
+          ) : report.isPending || accounts.isPending ? (
+            <SkeletonTable rows={8} columns={6} label={t('title')} />
+          ) : !posted ? (
+            <EmptyState title={t('empty')} />
           ) : (
-            <ComparisonTable columns={report.data.columns} locale={locale} periodRange={periodRange} />
+            <StatementTable caption={t('title')} columns={[...columns.map(monthLabel), t('total')]} blocks={blocks} />
           )}
         </>
       )}
     </div>
-  );
-}
-
-function ComparisonTable({
-  columns,
-  locale,
-  periodRange,
-}: {
-  columns: MonthlyPLColumn[];
-  locale: 'en' | 'ar';
-  /** periodNumber → its dates, for the drill-down to that month's Profit & Loss. */
-  periodRange: ReadonlyMap<number, { from: string; to: string }>;
-}) {
-  const t = useTranslations('accounting.monthlyPL');
-
-  const posted = columns.some((c) => sumMinorUnits([c.revenue, c.expenses], MONEY_SCALE) !== 0);
-
-  if (!posted) {
-    return (
-      <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-12 text-center">
-        <p className="text-sm text-muted-foreground">{t('empty')}</p>
-      </div>
-    );
-  }
-
-  // Year-to-date totals are not on the response. Summed in minor units, like every other
-  // column of money in this app.
-  const total = (key: keyof MonthlyPLColumn) =>
-    fromMinorUnits(
-      sumMinorUnits(
-        columns.map((c) => String(c[key])),
-        MONEY_SCALE,
-      ),
-      MONEY_SCALE,
-    );
-
-  return (
-    <TableScroll aria-label={t('title')}>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead className="min-w-35">{t('colPeriod')}</TableHead>
-            <TableHead numeric>{t('colRevenue')}</TableHead>
-            <TableHead numeric>{t('colCostOfSales')}</TableHead>
-            <TableHead numeric>{t('colGrossProfit')}</TableHead>
-            <TableHead numeric>{t('colExpenses')}</TableHead>
-            <TableHead numeric>{t('colNetIncome')}</TableHead>
-          </TableRow>
-        </TableHeader>
-
-        <TableBody>
-          {columns.map((column) => (
-            <TableRow key={column.periodNumber}>
-              <TableCell className="min-w-35">
-                {periodRange.get(column.periodNumber) ? (
-                  <Link
-                    href={profitLossHref(periodRange.get(column.periodNumber)!)}
-                    className="text-sm font-medium text-brand-primary underline-offset-2 hover:underline"
-                    aria-label={t('openPeriod', { period: column.periodName })}
-                  >
-                    {column.periodName}
-                  </Link>
-                ) : (
-                  <span className="text-sm text-foreground">{column.periodName}</span>
-                )}
-              </TableCell>
-              {[
-                column.revenue,
-                column.costOfSales,
-                column.grossProfit,
-                column.expenses,
-              ].map((amount, i) => (
-                <TableCell key={i} numeric>
-                  <bdi className="tabular-nums">{formatMoney(amount, undefined, locale)}</bdi>
-                </TableCell>
-              ))}
-              {/* Net income is the column being read across; a loss is coloured so a run of
-                  them is visible without reading every figure. */}
-              <TableCell numeric>
-                <bdi
-                  className={
-                    Number(column.netIncome) < 0
-                      ? 'text-sm font-medium tabular-nums text-danger'
-                      : 'text-sm font-medium tabular-nums'
-                  }
-                >
-                  {formatMoney(column.netIncome, undefined, locale)}
-                </bdi>
-              </TableCell>
-            </TableRow>
-          ))}
-
-          <TableRow>
-            <TableCell className="min-w-35">
-              <span className="text-sm font-semibold text-foreground">{t('total')}</span>
-            </TableCell>
-            {(['revenue', 'costOfSales', 'grossProfit', 'expenses', 'netIncome'] as const).map(
-              (key) => (
-                <TableCell key={key} numeric>
-                  <bdi className="text-sm font-semibold tabular-nums">
-                    {formatMoney(total(key), undefined, locale)}
-                  </bdi>
-                </TableCell>
-              ),
-            )}
-          </TableRow>
-        </TableBody>
-      </Table>
-    </TableScroll>
   );
 }

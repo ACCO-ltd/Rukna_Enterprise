@@ -204,7 +204,6 @@ describe('InvoiceCreate', () => {
     expect(within(lines).getByText('Separate charge — Site mobilisation')).toBeInTheDocument();
     expect(within(lines).getAllByText('$9,800.00').length).toBeGreaterThan(0);
     expect(within(lines).queryByRole('textbox')).toBeNull();
-    expect(screen.getByText('Amount before sales tax')).toBeInTheDocument();
     expect(await screen.findByText('Ministry of Water Resources')).toBeInTheDocument();
   });
 

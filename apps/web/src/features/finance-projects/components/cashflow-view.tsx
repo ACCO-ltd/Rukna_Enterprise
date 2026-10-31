@@ -15,6 +15,7 @@ import {
   EmptyState,
   Notice,
   Skeleton,
+  StatTile,
   Table,
   TableBody,
   TableCell,
@@ -144,9 +145,17 @@ export function CashflowView({ projectId, projectCode }: { projectId?: string; p
             {t('range', {
               from: utcDate(data!.from, { day: 'numeric', month: 'short', year: 'numeric' }),
               to: utcDate(data!.to, { day: 'numeric', month: 'short', year: 'numeric' }),
-              currency: current.currency,
             })}
           </p>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            {current.openingCash != null ? <StatTile label={t('cashToday')} value={formatMoney(current.openingCash, current.currency) ?? '—'} /> : null}
+            <StatTile label={t('expectedIn')} value={formatMoney(current.totals.inflows.total, current.currency) ?? '—'} />
+            <StatTile label={t('expectedOut')} value={formatMoney(current.totals.outflows.total, current.currency) ?? '—'} />
+            <StatTile
+              label={current.openingCash != null ? t('cashAtEnd') : t('netAtEnd')}
+              value={formatMoney(current.buckets.filter((x) => x.kind !== 'UNDATED').at(-1)?.cumulativeNet ?? null, current.currency) ?? '—'}
+            />
+          </div>
           <CashflowChart forecast={current} size={size} />
           <CashflowTable forecast={current} size={size} bucketLabel={bucketLabel} />
         </>
@@ -209,7 +218,7 @@ function CashflowTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {forecast.buckets.map((b) => (
+          {forecast.buckets.filter((b) => b.kind === 'NOW' || Number(b.inflows.total ?? 0) !== 0 || Number(b.outflows.total ?? 0) !== 0).map((b) => (
             <TableRow key={b.key}>
               <TableCell className={cn('whitespace-nowrap', b.kind !== 'PERIOD' && 'font-medium')}>
                 {bucketLabel(b, size)}

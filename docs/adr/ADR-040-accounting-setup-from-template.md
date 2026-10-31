@@ -1,6 +1,6 @@
 # ADR-040 — Accounting setup from a template
 
-**Status:** Accepted (owner: Abdulsalam, 2026-09-30). Amended by ADR-041 (2026-10-01): no input-VAT asset, and tax configured before setup is kept. Chart content pending sign-off by Eng Ahmed Shirie / ACCO's accountant — the template is data and can be revised before an organisation installs it.
+**Status:** Accepted (owner: Abdulsalam, 2026-09-30). Amended by ADR-041 (2026-10-01): no input-VAT asset, and tax configured before setup is kept. Amended by ADR-050 (2026-10-31): no VAT at all — no tax step, no tax codes, no `22000 Output VAT payable`; the chart is 78 accounts without banks. Chart content pending sign-off by Eng Ahmed Shirie / ACCO's accountant — the template is data and can be revised before an organisation installs it.
 
 ## Context
 

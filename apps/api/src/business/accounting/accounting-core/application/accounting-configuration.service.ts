@@ -91,11 +91,6 @@ export class AccountingConfigurationService {
     return policy;
   }
 
-  async getTaxPolicy(organizationId: string) {
-    const prisma = this.tenancyService.getClient();
-    return this.repo.getTaxPolicy(prisma, organizationId);
-  }
-
   async getDimensionPolicy(organizationId: string) {
     const prisma = this.tenancyService.getClient();
     return this.repo.getDimensionPolicy(prisma, organizationId);

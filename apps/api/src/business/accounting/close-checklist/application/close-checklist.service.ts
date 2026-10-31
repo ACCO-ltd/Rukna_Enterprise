@@ -3,7 +3,6 @@ import type { CloseCheck, CloseCheckStatus, CloseChecklist, RequestIdentity } fr
 
 import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
 import { PeriodManagementService } from '../../general-ledger/application/period-management.service.js';
-import { VatReportService } from '../../vat-report/application/vat-report.service.js';
 import { CloseChecklistRepository } from '../infrastructure/close-checklist.repository.js';
 
 const BASE = '/finance/accounting';
@@ -12,7 +11,7 @@ const day = (d: Date) => d.toISOString().slice(0, 10);
 /**
  * Step 6 — the month-end close checklist for one period, read live: everything dated in the month
  * posted, every bank account reconciled to the month's end, the AR and AP control accounts tied out
- * to their subledgers, the month's VAT, then lock and close. A check is done when the data says so;
+ * to their subledgers, then lock and close. A check is done when the data says so;
  * there is no stored tick to fall out of date.
  *
  * The checks that block closing are the close gate's own (PeriodManagementService), so the
@@ -24,7 +23,6 @@ export class CloseChecklistService {
   constructor(
     private readonly repo: CloseChecklistRepository,
     private readonly periods: PeriodManagementService,
-    private readonly vat: VatReportService,
     private readonly auditOutbox: TransactionalAuditOutboxService,
   ) {}
 
@@ -42,12 +40,11 @@ export class CloseChecklistService {
       : [...unclosed].reverse().find((p) => p.endDate < today) ?? unclosed.find((p) => p.startDate <= today && p.endDate >= today) ?? all[0];
     if (!period) throw new NotFoundException({ errorCode: 'PERIOD_NOT_FOUND', message: 'Accounting period not found' });
 
-    const [unposted, journals, banks, tieOut, vat, requireBanks] = await Promise.all([
+    const [unposted, journals, banks, tieOut, requireBanks] = await Promise.all([
       this.repo.unposted(db, orgId, period.startDate, period.endDate),
       this.periods.countPendingJournals(db, orgId, period),
       this.periods.bankReconciliationStatus(db, orgId, period.endDate),
       this.periods.controlTieOut(orgId),
-      this.vat.report(identity, day(period.startDate), day(period.endDate)),
       this.repo.requireBankReconciliation(db, orgId),
     ]);
 
@@ -106,13 +103,6 @@ export class CloseChecklistService {
         detail: tieOutDone ? 'The AR and AP control accounts agree with their subledgers.' : 'A control account does not agree with its subledger; find the difference before closing.',
         href: `${BASE}/reconciliation`,
         items: tieOutItems,
-      },
-      {
-        key: 'vat',
-        status: 'INFO',
-        detail: `Output VAT for ${period.name}: ${vat.output.total} (${vat.output.lines.length} posting(s)). The VAT account stands at ${vat.closingBalance}.`,
-        href: `${BASE}/vat-report`,
-        items: [],
       },
       {
         key: 'lock',

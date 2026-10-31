@@ -24,7 +24,7 @@ const nextDay = () => new Date(env.periods.openStart.getTime() + 86_400_000).toI
 async function postedBill(amount: number) {
   const bill = await svc.supplierBillService.create(env.identity, {
     supplierId: env.supplierId, supplierInvoiceNumber: `SP-${Math.random().toString(36).slice(2, 9)}`, billDate: day(), dueDate: day(), currencyCode: 'USD',
-    lines: [{ description: 'Formwork hire', netAmount: amount, vatAmount: 0, expenseProfileCode: env.postingProfileCode }],
+    lines: [{ description: 'Formwork hire', netAmount: amount, expenseProfileCode: env.postingProfileCode }],
   } as never);
   await svc.supplierBillService.submit(env.identity, bill.id);
   const now = await prisma.supplierBill.findUniqueOrThrow({ where: { id: bill.id } });

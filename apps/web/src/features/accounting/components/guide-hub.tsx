@@ -159,7 +159,7 @@ export function GuideHub() {
 /** The one-step setup (ADR-040), with what it installs — the whole page until it has run. */
 function SetupCallout({ onSetUp }: { onSetUp: () => void }) {
   const tSetup = useTranslations('accounting.setup.hub');
-  const installs = ['chart', 'banks', 'tax', 'fiscalYear', 'numbering'] as const;
+  const installs = ['chart', 'banks', 'fiscalYear', 'numbering'] as const;
   return (
     <section
       aria-labelledby="accounting-setup-callout"

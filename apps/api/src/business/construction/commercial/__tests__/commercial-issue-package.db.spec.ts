@@ -17,9 +17,6 @@ import { VariationOrderService } from '../../variations/application/variation-or
 import { CommercialPrismaRepository } from '../infrastructure/commercial-prisma.repository.js';
 import { CommercialBillingService } from '../application/commercial-billing.service.js';
 import { linkVerifiedMilestones } from './verified-milestones.fixture.js';
-import { TaxCodeService } from '../../../accounting/accounting-core/application/tax-code.service.js';
-import { TaxCodeRepository } from '../../../accounting/accounting-core/infrastructure/tax-code.repository.js';
-import { cleanupSalesTax, seedDefaultSalesTax } from '../../../accounting/__tests__/helpers/sales-tax.fixture.js';
 
 /**
  * Slice 4B — Issue billing package + record delivery (live-DB).
@@ -107,7 +104,6 @@ describe('CommercialBillingService — issuePackage + recordDelivery (Slice 4B)'
       mockPostingPort as never,
       documentService,
       fileService,
-      new TaxCodeService(tenancy, new TaxCodeRepository()),
     );
 
     const variationRepo = new VariationOrderPrismaRepository();
@@ -144,7 +140,6 @@ describe('CommercialBillingService — issuePackage + recordDelivery (Slice 4B)'
     await prisma.organization.create({
       data: { id: orgId, name: `Org ${suffix}`, slug: `ipkg-${suffix}`, status: 'ACTIVE' },
     });
-    await seedDefaultSalesTax(prisma, orgId);
     const project = await prisma.project.create({
       data: {
         organizationId: orgId,
@@ -265,7 +260,6 @@ describe('CommercialBillingService — issuePackage + recordDelivery (Slice 4B)'
     await prisma.boqVersion.deleteMany({ where: { boq: { organizationId: orgId } } });
     await prisma.boq.deleteMany({ where: { organizationId: orgId } });
     await prisma.project.deleteMany({ where: { organizationId: orgId } });
-    await cleanupSalesTax(prisma, orgId);
     await prisma.organization.deleteMany({ where: { id: orgId } });
     await prisma.$disconnect();
   });
@@ -310,12 +304,12 @@ describe('CommercialBillingService — issuePackage + recordDelivery (Slice 4B)'
     expect(pkg.milestoneInvoice!.invoiceNumber).toMatch(/^INV-/);
     expect(pkg.variationLines).toHaveLength(0);
 
-    // instB = 30% of 500,000 = 150,000; total = 150,000 * 1.05 = 157,500
+    // instB = 30% of 500,000 = 150,000; total = 150,000
     const inv = await prisma.clientInvoice.findUniqueOrThrow({
       where: { id: pkg.milestoneInvoice!.id },
     });
     expect(new Decimal(inv.subtotal.toString()).toFixed(2)).toBe('150000.00');
-    expect(new Decimal(inv.totalAmount.toString()).toFixed(2)).toBe('157500.00');
+    expect(new Decimal(inv.totalAmount.toString()).toFixed(2)).toBe('150000.00');
   });
 
   it('I-02: repeated issuePackage on instB is idempotent — same invoice returned', async () => {
@@ -398,8 +392,8 @@ describe('CommercialBillingService — issuePackage + recordDelivery (Slice 4B)'
     const packages = await service.getBillingPackages(identity, contractId);
     const instAPkg = packages.packages.find((p) => p.installmentId === instA);
 
-    // milestone: 200,000 × 1.05 = 210,000; VO: 10,000 × 1.05 = 10,500; sum = 220,500
-    expect(instAPkg!.presentedTotal).toBe('220500.00');
+    // milestone: 200,000; VO: 10,000; sum = 210,000
+    expect(instAPkg!.presentedTotal).toBe('210000.00');
   });
 
   // ─── Group D: Delivery history ───────────────────────────────────────────────
@@ -530,7 +524,6 @@ describe('CommercialBillingService — issuePackage + recordDelivery (Slice 4B)'
     await prisma.organization.create({
       data: { id: orgId2, name: `Rollback Org ${suffix2}`, slug: `rb-${suffix2}`, status: 'ACTIVE' },
     });
-    await seedDefaultSalesTax(prisma, orgId2);
     const project2 = await prisma.project.create({
       data: {
         organizationId: orgId2,
@@ -633,7 +626,6 @@ describe('CommercialBillingService — issuePackage + recordDelivery (Slice 4B)'
     const clientInvSvc2 = new ClientInvoiceService(
       tenancy2, invRepo2, seqRepo2, mockResolver2 as never, failingPostingPort as never,
       {} as unknown as InvoiceDocumentService, {} as unknown as PlatformFileService,
-      new TaxCodeService(tenancy2, new TaxCodeRepository()),
     );
     const varRepo2 = new VariationOrderPrismaRepository();
     const varSvc2 = new VariationOrderService(tenancy2, varRepo2, projectAccess2, auditOutbox2);
@@ -684,7 +676,6 @@ describe('CommercialBillingService — issuePackage + recordDelivery (Slice 4B)'
     await prisma.boqVersion.deleteMany({ where: { boq: { organizationId: orgId2 } } });
     await prisma.boq.deleteMany({ where: { organizationId: orgId2 } });
     await prisma.project.deleteMany({ where: { organizationId: orgId2 } });
-    await cleanupSalesTax(prisma, orgId2);
     await prisma.organization.deleteMany({ where: { id: orgId2 } });
   });
 

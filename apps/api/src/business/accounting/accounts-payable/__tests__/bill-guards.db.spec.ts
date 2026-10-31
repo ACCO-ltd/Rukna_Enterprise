@@ -24,7 +24,7 @@ const bill = (over: Record<string, unknown> = {}, line: Record<string, unknown> 
     billDate: day(),
     dueDate: day(),
     currencyCode: 'USD',
-    lines: [{ description: 'Scaffold hire', netAmount: 300, vatAmount: 0, expenseProfileCode: env.postingProfileCode, ...line }],
+    lines: [{ description: 'Scaffold hire', netAmount: 300, expenseProfileCode: env.postingProfileCode, ...line }],
     ...over,
   } as never);
 
@@ -42,7 +42,7 @@ it('SB-01: only USD; due date not before bill date; total more than 0', async ()
   await expect(bill({ currencyCode: 'EUR' })).rejects.toMatchObject({ status: 400, response: { errorCode: 'CURRENCY_NOT_SUPPORTED' } });
   const before = new Date(env.periods.openStart.getTime() - 86_400_000).toISOString().slice(0, 10);
   await expect(bill({ dueDate: before })).rejects.toMatchObject({ response: { errorCode: 'DUE_BEFORE_BILL_DATE' } });
-  await expect(bill({}, { netAmount: 0, vatAmount: 0 })).rejects.toMatchObject({ response: { errorCode: 'BILL_TOTAL_NOT_POSITIVE' } });
+  await expect(bill({}, { netAmount: 0 })).rejects.toMatchObject({ response: { errorCode: 'BILL_TOTAL_NOT_POSITIVE' } });
 });
 
 it('SB-02: unknown supplier is a 404; an inactive supplier takes no new bill', async () => {
@@ -54,7 +54,7 @@ it('SB-02: unknown supplier is a 404; an inactive supplier takes no new bill', a
     // Their existing draft can still be corrected.
     const edited = await svc.supplierBillService.update(env.identity, draft.id, {
       supplierId: env.supplierId, supplierInvoiceNumber: draft.supplierInvoiceNumber, billDate: day(), dueDate: day(), currencyCode: 'USD',
-      lines: [{ description: 'Scaffold hire', netAmount: 250, vatAmount: 0, expenseProfileCode: env.postingProfileCode }],
+      lines: [{ description: 'Scaffold hire', netAmount: 250, expenseProfileCode: env.postingProfileCode }],
     } as never);
     expect(edited.totalAmount.toString()).toBe('250');
   } finally {

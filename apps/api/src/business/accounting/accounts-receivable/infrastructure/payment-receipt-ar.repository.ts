@@ -228,9 +228,9 @@ export class PaymentReceiptArRepository {
 
   /**
    * ADR-024 ACC-SET-001 — IPC payment status derived from the invoice, not the IPC (moved here
-   * from the retired finance module in BE-2). Settlement is measured against the VAT-inclusive
+   * from the retired finance module in BE-2). Settlement is measured against the
    * ClientInvoice raised from the effective IPC (`sourceIpcId`), never against `netCertified`
-   * (D2). Every figure is reported separately so no two tax bases are ever compared. An IPC with
+   * (D2). Every figure is reported separately so no two bases are ever compared. An IPC with
    * no live (POSTED, non-reversed) invoice is UNINVOICED: certified, but not yet billed.
    */
   async getCertificatePaymentSummary(
@@ -256,13 +256,12 @@ export class PaymentReceiptArRepository {
 
     const invoice = await prisma.clientInvoice.findFirst({
       where: { sourceIpcId: certificateId, postingStatus: 'POSTED', reversalJournalEntryId: null },
-      select: { id: true, vatAmount: true, totalAmount: true },
+      select: { id: true, totalAmount: true },
     });
 
     if (!invoice) {
       return {
         netCertified: netCertified.toFixed(2),
-        vatAmount: '0.00',
         invoiceTotal: null,
         totalReceived: '0.00',
         outstanding: null,
@@ -273,7 +272,6 @@ export class PaymentReceiptArRepository {
     }
 
     const invoiceTotal = new Decimal(invoice.totalAmount.toString());
-    const vatAmount = new Decimal(invoice.vatAmount.toString());
 
     const received = await prisma.clientReceiptAllocation.aggregate({
       where: { clientInvoiceId: invoice.id, postingStatus: 'POSTED' },
@@ -295,7 +293,6 @@ export class PaymentReceiptArRepository {
 
     return {
       netCertified: netCertified.toFixed(2),
-      vatAmount: vatAmount.toFixed(2),
       invoiceTotal: invoiceTotal.toFixed(2),
       totalReceived: totalReceived.toFixed(2),
       outstanding: outstanding.toFixed(2),

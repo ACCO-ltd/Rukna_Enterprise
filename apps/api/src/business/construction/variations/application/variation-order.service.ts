@@ -126,8 +126,8 @@ export class VariationOrderService {
    *
    * Pure read. It rides the existing join `IpcItem.certifiedAmount → applicationItem(IpaItem).boqNodeId
    * → BoqNode.sourceChangeOrderId → VariationOrder` — no column is threaded onto IPA/IPC/Invoice. The
-   * basis is gross / ex-VAT: certified = Σ certifiedAmount over EFFECTIVE-IPC item lines; invoiced =
-   * the same over item lines of IPCs whose ClientInvoice is POSTED. VAT + certificate-level deductions
+   * basis is gross: certified = Σ certifiedAmount over EFFECTIVE-IPC item lines; invoiced =
+   * the same over item lines of IPCs whose ClientInvoice is POSTED. Certificate-level deductions
    * are not VO-attributable and are excluded by construction (they never appear on the item line), so
    * ADR-024 settlement truth stays AR-owned and untouched (CONST-VAR-012).
    *

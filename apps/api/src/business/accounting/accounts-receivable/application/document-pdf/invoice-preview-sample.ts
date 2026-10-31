@@ -20,9 +20,7 @@ export function previewSampleInvoice(
     paymentTerms: 'Net 30',
     currencyCode: 'USD',
     subtotal: '8000.00',
-    vatAmount: '400.00',
-    totalAmount: '8400.00',
-    taxRatePercent: '5',
+    totalAmount: '8000.00',
     client: {
       name: 'Sample Client',
       address: null,

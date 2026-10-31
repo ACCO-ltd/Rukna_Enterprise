@@ -22,10 +22,6 @@ export class CreateSupplierBillLineDto {
   @IsNumber() @Min(0)
   netAmount!: number;
 
-  @ApiProperty({ example: 250 })
-  @IsNumber() @Min(0)
-  vatAmount!: number;
-
   @ApiProperty({ example: 'GENERAL-EXPENSE', description: 'Expense posting profile code' })
   @IsString() @IsNotEmpty() @MaxLength(50)
   expenseProfileCode!: string;

@@ -112,7 +112,6 @@ export class AccountingPostingService implements IAccountingPostingPort {
           contractId: line.contractId ?? null,
           boqNodeId: line.boqNodeId ?? null,
           spendCategoryId: line.spendCategoryId ?? null,
-          taxCodeId: line.taxCodeId ?? null,
         };
       }),
     );

@@ -34,18 +34,17 @@ beforeAll(async () => {
   aging = new AgingReportService({ getClient: () => prisma } as never, new FinanceHomeRepository());
   for (const [code, name, accountClass, subtype] of [
     ['42100', 'Equipment hire income', 'INCOME', 'OTHER_INCOME'],
-    ['22000', 'Sales tax payable', 'LIABILITY', 'VAT_OUTPUT_PAYABLE'],
   ] as const) {
     const a = await prisma.account.create({ data: { id: `${env.orgId}-${code}`, organizationId: env.orgId, code, normalBalance: 'CREDIT', createdBy: env.identity.userId } });
     await prisma.accountVersion.create({
       data: { accountId: a.id, versionNumber: 1, name, accountClass, accountSubtype: subtype, isPostingAllowed: true, isControlAccount: false, controlPostingPolicy: 'UNRESTRICTED', effectiveFrom: new Date('2020-01-01'), changedBy: env.identity.userId },
     });
   }
-  // Day 2: invoice 1000 + 5% = 1050, due day 12. Day 5: 400 received and applied, plus 100 paid
+  // Day 2: invoice 1050, due day 12. Day 5: 400 received and applied, plus 100 paid
   // ahead. Day 7: a 50 cheque applied; it bounces on day 9.
   const inv = await svc.clientInvoiceService.createManual(env.identity, {
     clientId: env.clientId, invoiceDate: day(2), dueDate: day(12), currencyCode: 'USD',
-    lines: [{ description: 'Crane hire', quantity: '1', unitPrice: '1000.00', revenueAccountCode: '42100' }],
+    lines: [{ description: 'Crane hire', quantity: '1', unitPrice: '1050.00', revenueAccountCode: '42100' }],
   });
   await svc.clientInvoiceService.issue(env.identity, inv.id);
   invoiceId = inv.id;

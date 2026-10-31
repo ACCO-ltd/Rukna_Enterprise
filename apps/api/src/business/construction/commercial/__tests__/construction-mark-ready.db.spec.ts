@@ -12,9 +12,6 @@ import type { PlatformFileService } from '../../../../platform/files/application
 import { DocumentSequenceRepository } from '../../../accounting/accounting-core/infrastructure/document-sequence.repository.js';
 import { ClientInvoiceRepository } from '../../../accounting/accounts-receivable/infrastructure/client-invoice.repository.js';
 import { ClientInvoiceService } from '../../../accounting/accounts-receivable/application/client-invoice.service.js';
-import { TaxCodeService } from '../../../accounting/accounting-core/application/tax-code.service.js';
-import { TaxCodeRepository } from '../../../accounting/accounting-core/infrastructure/tax-code.repository.js';
-import { cleanupSalesTax, seedDefaultSalesTax } from '../../../accounting/__tests__/helpers/sales-tax.fixture.js';
 import { VariationOrderPrismaRepository } from '../../variations/infrastructure/variation-order-prisma.repository.js';
 import { VariationOrderService } from '../../variations/application/variation-order.service.js';
 import { CommercialPrismaRepository } from '../infrastructure/commercial-prisma.repository.js';
@@ -69,7 +66,6 @@ describe('Construction mark-ready (ADR-043 decision 1)', () => {
     const tenancy = { getClient: () => prisma } as unknown as TenancyService;
     const projectAccess = { assertContract: async () => undefined, assertMember: async () => undefined } as unknown as ProjectAccessService;
     // Real prepare path (drafts only — nothing is posted, so no posting port / resolver is used).
-    await seedDefaultSalesTax(prisma, orgId);
     const auditOutbox = new TransactionalAuditOutboxService();
     const clientInvoiceService = new ClientInvoiceService(
       tenancy,
@@ -79,7 +75,6 @@ describe('Construction mark-ready (ADR-043 decision 1)', () => {
       {} as never,
       {} as unknown as InvoiceDocumentService,
       {} as unknown as PlatformFileService,
-      new TaxCodeService(tenancy, new TaxCodeRepository()),
     );
     const variationRepo = new VariationOrderPrismaRepository();
     service = new CommercialBillingService(
@@ -157,7 +152,6 @@ describe('Construction mark-ready (ADR-043 decision 1)', () => {
     await prisma.rolePermission.deleteMany({ where: { role: { organizationId: orgId } } });
     await prisma.role.deleteMany({ where: { organizationId: orgId } });
     await prisma.user.deleteMany({ where: { organizationId: orgId } });
-    await cleanupSalesTax(prisma, orgId);
     await prisma.$executeRaw`DELETE FROM organizations WHERE id = ${orgId}`;
     await prisma.$disconnect();
   });
@@ -211,7 +205,6 @@ describe('Construction mark-ready (ADR-043 decision 1)', () => {
         invoiceDate: new Date('2026-10-01'),
         currencyCode: 'USD',
         subtotal: new Decimal('30000'),
-        vatAmount: new Decimal('0'),
         totalAmount: new Decimal('30000'),
         outstandingAmount: new Decimal('30000'),
         billingAddressSnapshot: {},

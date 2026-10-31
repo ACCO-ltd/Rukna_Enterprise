@@ -1,6 +1,6 @@
 # ADR-006: Accounting Foundation — Architecture, Domain Model, and ACCO Configuration
 
-**Status:** ACCEPTED — all decisions and business configuration questions resolved (2026-08-05)
+**Status:** ACCEPTED — all decisions and business configuration questions resolved (2026-08-05). The tax parts (`TaxCode`, `TaxPolicy`, ACC-TAX-001, VAT posting lines) are superseded by ADR-050 (2026-10-31): the platform keeps no VAT.
 **Date:** 2026-08-05
 **Deciders:** Abdulsalam (Backend Engineer), Eng Ahmed Shirie (CEO, ACCO Ltd), Financial Officer
 **Supersedes:** ADR-006 DRAFT (2026-08-03)
@@ -1906,7 +1906,7 @@ The account subtype taxonomy reserves: `REALIZED_FX_GAIN`, `REALIZED_FX_LOSS`, `
 
 All three business configuration questions are resolved (2026-08-05).
 
-### ACC-TAX-001 — Input VAT Treatment ✓ RESOLVED
+### ACC-TAX-001 — Input VAT Treatment ✓ RESOLVED (superseded by ADR-050: no VAT)
 
 **Decision:** Input VAT is **NON_RECOVERABLE** and is absorbed into the inventory or expense cost.
 

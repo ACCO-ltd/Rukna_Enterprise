@@ -26,7 +26,6 @@ function invoice(overrides: Partial<ClientInvoice> = {}): ClientInvoice {
     contractId: 'con-1',
     currencyCode: 'SOS',
     subtotal: '6190.48',
-    vatAmount: '307.52',
     totalAmount: '6498.00',
     outstandingAmount: '6498.00',
     paymentTerms: 'Net 30',

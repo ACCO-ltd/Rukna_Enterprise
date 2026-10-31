@@ -164,12 +164,11 @@ function formSignature(values: {
           l.expenseProfileCode,
           l.quantity,
           l.unitPrice,
-          l.vatAmount,
           l.costLine,
         ])
       : null,
     values.kind === 'po'
-      ? values.poLines.map((l) => [l.poLineId, l.quantity, l.unitPrice, l.vatAmount, l.expenseProfileCode])
+      ? values.poLines.map((l) => [l.poLineId, l.quantity, l.unitPrice, l.expenseProfileCode])
       : null,
   ]);
 }
@@ -378,7 +377,7 @@ export function SupplierBillCreateForm({
       }) !== baseline
     : Boolean(supplierId || invoiceNumber || purchaseOrderId || projectChoice || billDate || dueDate) ||
       directLines.some(
-        (l) => l.description || l.unitPrice || l.vatAmount || l.expenseProfileCode || l.costLine || l.quantity !== '1',
+        (l) => l.description || l.unitPrice || l.expenseProfileCode || l.costLine || l.quantity !== '1',
       );
 
   useEffect(() => {
@@ -447,7 +446,6 @@ export function SupplierBillCreateForm({
     profile: t('col.expenseProfile'),
     quantity: kind === 'po' ? t('col.billedQty') : t('col.qty'),
     unitPrice: t('col.unitPrice'),
-    vat: t('col.vat'),
     amount: t('col.amount'),
     costLine: t('col.costLine'),
   };
@@ -806,10 +804,7 @@ export function SupplierBillCreateForm({
           <div className="flex justify-end">
             <TotalsBlock
               className="w-full max-w-xs"
-              rows={[
-                { label: tBills('subtotal'), value: money(totals.subtotal) },
-                { label: tBills('vat'), value: money(totals.vat) },
-              ]}
+              rows={[]}
               total={{ label: tBills('totalAmount'), value: money(totals.total) }}
             />
           </div>
@@ -1127,21 +1122,6 @@ function PoLinesEditor({
       ),
     },
     {
-      key: 'vat',
-      header: t('col.vat'),
-      required: true,
-      width: '7.5rem',
-      controlId: (i) => lineId(i, 'vat'),
-      cell: (row, i) => (
-        <MoneyInput
-          id={lineId(i, 'vat')}
-          value={row.vatAmount}
-          onValueChange={(vatAmount) => onChange(i, { vatAmount })}
-          autoComplete="off"
-        />
-      ),
-    },
-    {
       key: 'amount',
       header: t('col.amount'),
       width: '8.5rem',
@@ -1290,21 +1270,6 @@ function DirectLinesEditor({
           id={lineId(i, 'unitPrice')}
           value={row.unitPrice}
           onValueChange={(unitPrice) => onChange(i, { unitPrice })}
-          autoComplete="off"
-        />
-      ),
-    },
-    {
-      key: 'vat',
-      header: t('col.vat'),
-      required: true,
-      width: '7.5rem',
-      controlId: (i) => lineId(i, 'vat'),
-      cell: (row, i) => (
-        <MoneyInput
-          id={lineId(i, 'vat')}
-          value={row.vatAmount}
-          onValueChange={(vatAmount) => onChange(i, { vatAmount })}
           autoComplete="off"
         />
       ),

@@ -146,7 +146,6 @@ async function postedInvoice(amount: number) {
       dueDate: env.periods.openEnd,
       currencyCode: 'USD',
       subtotal: new Decimal(amount),
-      vatAmount: new Decimal(0),
       totalAmount: new Decimal(amount),
       outstandingAmount: new Decimal(amount),
       billingAddressSnapshot: {},

@@ -176,13 +176,10 @@ export const NAV_DOMAINS: NavDomain[] = [
       { href: '/finance/accounting/balance-sheet', labelKey: 'balanceSheet', iconKey: 'trending-up', groupKey: 'reports' },
       { href: '/finance/accounting/profit-loss', labelKey: 'profitLoss', iconKey: 'trending-up', groupKey: 'reports' },
       { href: '/finance/accounting/monthly-comparison', labelKey: 'monthlyComparison', iconKey: 'trending-up', groupKey: 'reports' },
-      // Step 6 — output VAT for a period, from the ledger.
-      { href: '/finance/accounting/vat-report', labelKey: 'vatReport', iconKey: 'tag', groupKey: 'reports' },
       // ADR-043 Phase 4 — a forward-looking report across projects, AR and AP; gated like its API.
       { href: '/finance/cashflow', labelKey: 'cashFlow', iconKey: 'trending-up', groupKey: 'reports', permissionKey: 'view:financial-position' },
       // Setup & close
       { href: '/finance/accounting/posting-profiles', labelKey: 'postingProfiles', iconKey: 'git-branch', groupKey: 'acctSetup' },
-      { href: '/finance/accounting/tax', labelKey: 'taxCodes', iconKey: 'tag', groupKey: 'acctSetup' },
       { href: '/finance/accounting/invoice-settings', labelKey: 'invoiceSettings', iconKey: 'receipt', groupKey: 'acctSetup' },
       // ADR-046 §8 — the optional finance approvals.
       { href: '/finance/accounting/approval-settings', labelKey: 'approvalSettings', iconKey: 'shield', groupKey: 'acctSetup' },

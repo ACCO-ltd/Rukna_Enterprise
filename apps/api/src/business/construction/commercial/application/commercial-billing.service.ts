@@ -91,7 +91,6 @@ interface InvoiceLike {
   id: string;
   invoiceNumber: string | null;
   subtotal: Decimal;
-  vatAmount: Decimal;
   totalAmount: Decimal;
   outstandingAmount: Decimal;
   dueDate?: Date | null;
@@ -169,7 +168,7 @@ export class CommercialBillingService {
    * `financialPositionView`. Ordered by installment sort order.
    *
    * Slice 4B: also populates `documents[]` (flat list of all invoice documents) and package-level
-   * aggregates (packageSubtotal, packageTax, packageTotal, packageOutstanding).
+   * aggregates (packageSubtotal, packageTotal, packageOutstanding).
    */
   async getBillingPackages(
     identity: RequestIdentity,
@@ -234,7 +233,6 @@ export class CommercialBillingService {
       sourceType,
       sourceReference,
       subtotal: money(new Decimal(inv.subtotal.toString())),
-      salesTax: money(new Decimal(inv.vatAmount.toString())),
       total: money(new Decimal(inv.totalAmount.toString())),
       dueDate: inv.dueDate ? inv.dueDate.toISOString() : null,
       outstanding: money(new Decimal(inv.outstandingAmount.toString())),
@@ -299,18 +297,15 @@ export class CommercialBillingService {
 
       // Package-level aggregates: sum across all documents (derived convenience, NOT a separate AR balance).
       let pkgSubtotal: string | null = null;
-      let pkgTax: string | null = null;
       let pkgTotal: string | null = null;
       let pkgOutstanding: string | null = null;
       if (canViewFinancials) {
         let sumSubtotal = ZERO;
-        let sumTax = ZERO;
         let sumTotal = ZERO;
         let sumOutstanding = ZERO;
         if (inst.clientInvoice) {
           const inv = inst.clientInvoice as InvoiceLike;
           sumSubtotal = sumSubtotal.plus(new Decimal(inv.subtotal.toString()));
-          sumTax = sumTax.plus(new Decimal(inv.vatAmount.toString()));
           sumTotal = sumTotal.plus(new Decimal(inv.totalAmount.toString()));
           sumOutstanding = sumOutstanding.plus(new Decimal(inv.outstandingAmount.toString()));
         }
@@ -318,13 +313,11 @@ export class CommercialBillingService {
           if (a.treatment === 'INVOICE' && a.clientInvoice) {
             const inv = a.clientInvoice as InvoiceLike;
             sumSubtotal = sumSubtotal.plus(new Decimal(inv.subtotal.toString()));
-            sumTax = sumTax.plus(new Decimal(inv.vatAmount.toString()));
             sumTotal = sumTotal.plus(new Decimal(inv.totalAmount.toString()));
             sumOutstanding = sumOutstanding.plus(new Decimal(inv.outstandingAmount.toString()));
           }
         }
         pkgSubtotal = sumSubtotal.toFixed(2);
-        pkgTax = sumTax.toFixed(2);
         pkgTotal = sumTotal.toFixed(2);
         pkgOutstanding = sumOutstanding.toFixed(2);
       }
@@ -337,7 +330,6 @@ export class CommercialBillingService {
         presentedTotal,
         documents,
         packageSubtotal: pkgSubtotal,
-        packageTax: pkgTax,
         packageTotal: pkgTotal,
         packageOutstanding: pkgOutstanding,
       });
@@ -575,8 +567,6 @@ export class CommercialBillingService {
       paymentTerms?: string;
       notes?: string;
       selectedVariationIds: string[];
-      /** ADR-041 — one tax code for every invoice in the package; omitted → the default. */
-      taxCodeId?: string;
     },
   ): Promise<CommercialBillingPackage> {
     const prisma = this.tenancy.getClient();
@@ -634,7 +624,6 @@ export class CommercialBillingService {
               dueDate: dto.dueDate,
               paymentTerms: dto.paymentTerms,
               subtotalAdjustment: omissionAdjustment.toFixed(2),
-              taxCodeId: dto.taxCodeId,
             },
             tx,
           );
@@ -674,7 +663,6 @@ export class CommercialBillingService {
             invoiceDate: dto.invoiceDate,
             dueDate: dto.dueDate,
             paymentTerms: dto.paymentTerms,
-            taxCodeId: dto.taxCodeId,
           },
           tx,
         );
@@ -811,7 +799,6 @@ export class CommercialBillingService {
             dueDate: dates.dueDate,
             paymentTerms,
             subtotalAdjustment: omissionAdjustment.toFixed(2),
-            taxCodeId: dto.taxCodeId,
           },
           tx,
         );
@@ -844,7 +831,6 @@ export class CommercialBillingService {
               invoiceDate: dates.invoiceDate,
               dueDate: dates.dueDate,
               paymentTerms,
-            taxCodeId: dto.taxCodeId,
             },
             tx,
           );

@@ -17,11 +17,7 @@ export interface CreateClientInvoiceData {
   dueDate: Date;
   currencyCode: string;
   subtotal: Decimal;
-  vatAmount: Decimal;
   totalAmount: Decimal;
-  /** ADR-041 — the sales tax code and its rate (percent) the invoice is raised at. */
-  taxCodeId: string;
-  taxRate: Decimal;
   paymentTerms?: string;
   /** A hand-typed invoice's client PO / job number and note to the client (ADR-048); null = none. */
   clientReference?: string | null;
@@ -402,10 +398,7 @@ export class ClientInvoiceRepository {
         dueDate: data.dueDate,
         currencyCode: data.currencyCode,
         subtotal: data.subtotal,
-        vatAmount: data.vatAmount,
         totalAmount: data.totalAmount,
-        taxCodeId: data.taxCodeId,
-        taxRate: data.taxRate,
         outstandingAmount: data.totalAmount,
         paymentTerms: data.paymentTerms ?? null,
         billingAddressSnapshot: data.billingAddressSnapshot,
@@ -506,10 +499,7 @@ export class ClientInvoiceRepository {
         dueDate: data.dueDate,
         currencyCode: data.currencyCode,
         subtotal: data.subtotal,
-        vatAmount: data.vatAmount,
         totalAmount: data.totalAmount,
-        taxCodeId: data.taxCodeId,
-        taxRate: data.taxRate,
         outstandingAmount: data.totalAmount,
         paymentTerms: data.paymentTerms ?? null,
         clientReference: data.clientReference ?? null,
@@ -531,7 +521,7 @@ export class ClientInvoiceRepository {
     invoiceId: string,
     header: Pick<
       CreateClientInvoiceData,
-      'clientId' | 'invoiceDate' | 'dueDate' | 'currencyCode' | 'subtotal' | 'vatAmount' | 'totalAmount' | 'taxCodeId' | 'taxRate' | 'paymentTerms' | 'clientReference' | 'notes' | 'billingAddressSnapshot'
+      'clientId' | 'invoiceDate' | 'dueDate' | 'currencyCode' | 'subtotal' | 'totalAmount' | 'paymentTerms' | 'clientReference' | 'notes' | 'billingAddressSnapshot'
     >,
     organizationId: string,
     lines: ManualInvoiceLineData[],
@@ -545,11 +535,8 @@ export class ClientInvoiceRepository {
         dueDate: header.dueDate,
         currencyCode: header.currencyCode,
         subtotal: header.subtotal,
-        vatAmount: header.vatAmount,
         totalAmount: header.totalAmount,
         outstandingAmount: header.totalAmount,
-        taxCodeId: header.taxCodeId,
-        taxRate: header.taxRate,
         paymentTerms: header.paymentTerms ?? null,
         clientReference: header.clientReference ?? null,
         notes: header.notes ?? null,

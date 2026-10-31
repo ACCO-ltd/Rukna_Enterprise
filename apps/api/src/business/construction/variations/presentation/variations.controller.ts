@@ -78,7 +78,7 @@ export class VariationsController {
   @ApiResponse({
     status: 200,
     description:
-      'Per-VO and base-scope certified/invoiced gross (ex-VAT); money nulled without financialPositionView',
+      'Per-VO and base-scope certified/invoiced gross; money nulled without financialPositionView',
   })
   certifiedInvoicedByVariation(
     @CurrentUser() identity: RequestIdentity,

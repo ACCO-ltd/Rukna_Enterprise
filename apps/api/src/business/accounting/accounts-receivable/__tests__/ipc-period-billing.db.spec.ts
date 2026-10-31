@@ -98,7 +98,6 @@ beforeAll(async () => {
   svc = buildServices(prisma);
   retentionAccountId = await mkAccount('11100', 'DEBIT', 'ASSET', 'RETENTION_RECEIVABLE');
   clientAdvanceAccountId = await mkAccount('21000', 'CREDIT', 'LIABILITY', 'CLIENT_ADVANCE_LIABILITY');
-  await mkAccount('22000', 'CREDIT', 'LIABILITY', 'VAT_OUTPUT_PAYABLE'); // the fixture org charges 5% sales tax
   // One contract per project: the scenarios run in order on the fixture's contract. Its own
   // certificate is never invoiced here, so it never counts as billed.
   contractId = (await prisma.contract.findFirstOrThrow({ where: { organizationId: env.orgId } })).id;
@@ -121,7 +120,7 @@ it('IPB-01: the first certificate is billed whole, net of retention and advance 
   expect(inv.subtotal.toFixed(2)).toBe('100000.00');
   expect(inv.retentionAmount.toFixed(2)).toBe('5000.00');
   expect(inv.advanceRecoveryAmount.toFixed(2)).toBe('10000.00');
-  const due = inv.subtotal.plus(inv.vatAmount).minus(15_000);
+  const due = inv.subtotal.minus(15_000);
   expect(inv.totalAmount.toFixed(2)).toBe(due.toFixed(2));
   expect(inv.outstandingAmount.toFixed(2)).toBe(due.toFixed(2));
 
@@ -148,7 +147,7 @@ it('IPB-02: the second, cumulative certificate is billed for the period only', a
   expect(inv.subtotal.toFixed(2)).toBe('150000.00');
   expect(inv.retentionAmount.toFixed(2)).toBe('7500.00');
   expect(inv.advanceRecoveryAmount.toFixed(2)).toBe('15000.00');
-  expect(inv.totalAmount.toFixed(2)).toBe(inv.subtotal.plus(inv.vatAmount).minus(22_500).toFixed(2));
+  expect(inv.totalAmount.toFixed(2)).toBe(inv.subtotal.minus(22_500).toFixed(2));
   expect((await balance(retentionAccountId)).toFixed(2)).toBe('12500.00');
 });
 
@@ -216,7 +215,6 @@ it('IPB-06: the billing check lists a contract a legacy invoice over-billed, by 
       dueDate: env.periods.openEnd,
       currencyCode: 'USD',
       subtotal: d(200_000),
-      vatAmount: d(0),
       totalAmount: d(200_000),
       outstandingAmount: d(200_000),
       billingAddressSnapshot: {},
@@ -275,7 +273,6 @@ it('IPB-08: the release invoice bills the retention held, clears Retention Recei
   // Generating again while the draft is open returns that draft.
   expect((await svc.clientInvoiceService.generateFromRetentionRelease(env.identity, releaseDto())).id).toBe(draft.id);
   expect(draft.subtotal.toFixed(2)).toBe('0.00');
-  expect(draft.vatAmount.toFixed(2)).toBe('0.00');
   expect(draft.retentionReleasedAmount.toFixed(2)).toBe('5000.00');
   expect(draft.totalAmount.toFixed(2)).toBe('5000.00');
 

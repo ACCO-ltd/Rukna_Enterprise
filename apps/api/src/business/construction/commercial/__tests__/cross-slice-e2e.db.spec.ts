@@ -57,11 +57,9 @@ describe('Cross-slice E2E — DRAFT BOQ → Contract Snapshot → Variation → 
   let inst1Id: string; // 100% milestone, ready-to-bill — Task 6
   let inst2Id: string; // 100% milestone, ready-to-bill — Task 7
 
-  // Computed amounts (known from the hard-coded 5% VAT engine).
-  // 100% × 500,000 = 500,000 subtotal → 525,000 total.
-  // VO 2,000 subtotal → 2,100 total.
-  const MILESTONE_TOTAL = '525000.00';
-  const VO_TOTAL = '2100.00';
+  // Computed amounts: 100% × 500,000 = 500,000; VO 2,000. No tax (ADR-050).
+  const MILESTONE_TOTAL = '500000.00';
+  const VO_TOTAL = '2000.00';
 
   beforeAll(async () => {
     env = await AccountingFixtureFactory.create(prisma);
@@ -119,22 +117,6 @@ describe('Cross-slice E2E — DRAFT BOQ → Contract Snapshot → Variation → 
   }, 60_000);
 
   async function seed(versioning: BoqVersioningService) {
-    // ── 0. VAT_OUTPUT_PAYABLE account (not in AccountingFixtureFactory baseline) ──
-    // clientInvoiceService.post() resolves this subtype when vatAmount > 0 (5% engine).
-    const vatAccId = `${env.orgId}-VAT-E2E`;
-    await prisma.account.create({
-      data: { id: vatAccId, organizationId: env.orgId, code: 'VAT-E2E', normalBalance: 'CREDIT' as never, createdBy: 'u1' },
-    });
-    await prisma.accountVersion.create({
-      data: {
-        accountId: vatAccId, versionNumber: 1, name: 'VAT Output Payable',
-        accountClass: 'LIABILITY' as never, accountSubtype: 'VAT_OUTPUT_PAYABLE' as never,
-        isPostingAllowed: true, isControlAccount: false,
-        controlPostingPolicy: 'UNRESTRICTED' as never, controlledSubledgerType: null,
-        effectiveFrom: new Date('2025-01-01'), effectiveTo: null, changedBy: 'u1',
-      },
-    });
-
     // ── 1. Project ────────────────────────────────────────────────────────────
     const project = await prisma.project.create({
       data: {
@@ -389,12 +371,12 @@ describe('Cross-slice E2E — DRAFT BOQ → Contract Snapshot → Variation → 
     // Remainder 100,000 fully allocated (no unallocated portion) but VO left open
     expect(receipt.allocations).toHaveLength(1);
 
-    // Milestone: 525,000 − 100,000 = 425,000 outstanding
+    // Milestone: 500,000 − 100,000 = 400,000 outstanding
     const milestoneAfter = await prisma.clientInvoice.findUniqueOrThrow({
       where: { id: milestoneInvId },
       select: { outstandingAmount: true },
     });
-    expect((milestoneAfter.outstandingAmount as Decimal).toFixed(2)).toBe('425000.00');
+    expect((milestoneAfter.outstandingAmount as Decimal).toFixed(2)).toBe('400000.00');
 
     // VO invoice: completely untouched by this payment
     const voAfter = await prisma.clientInvoice.findUniqueOrThrow({

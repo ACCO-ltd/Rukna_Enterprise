@@ -12,7 +12,6 @@ const inv = (over: Partial<ClientInvoice>): ClientInvoice =>
     postingStatus: 'POSTED',
     source: { kind: 'IPC', label: 'IPA 1', id: 'ipc1' },
     subtotal: '0',
-    vatAmount: '0',
     totalAmount: '0',
     outstandingAmount: '0',
     retentionAmount: '0',
@@ -23,33 +22,31 @@ const inv = (over: Partial<ClientInvoice>): ClientInvoice =>
     ...over,
   }) as ClientInvoice;
 
-/** Lines − before-tax + tax − after-tax must equal the server's total, or the page would lie. */
+/** Lines − deductions − holdbacks must equal the server's total, or the page would lie. */
 const ties = (m: ReturnType<typeof invoiceDocumentModel>) =>
   m.lines.reduce((s, l) => s + l.amountMinor, 0) -
-  m.lessBeforeTax.reduce((s, a) => s + a.minor, 0) +
-  m.taxMinor -
-  m.lessAfterTax.reduce((s, a) => s + a.minor, 0);
+  m.lessBeforeSubtotal.reduce((s, a) => s + a.minor, 0) -
+  m.lessAfterSubtotal.reduce((s, a) => s + a.minor, 0);
 
 describe('invoiceDocumentModel', () => {
-  it('lays a certificate out at gross, less other deductions, plus tax, less retention and advance', () => {
+  it('lays a certificate out at gross, less other deductions, less retention and advance', () => {
     const m = invoiceDocumentModel(
       inv({
         billingAddressSnapshot: { description: 'Interim Certificate #2' },
         certifiedGrossAmount: '200000',
         otherDeductionsAmount: '1000',
         subtotal: '199000',
-        vatAmount: '9950',
         retentionAmount: '10000',
         advanceRecoveryAmount: '5000',
-        totalAmount: '193950',
+        totalAmount: '184000',
       }),
     );
     expect(m.lines).toEqual([
       expect.objectContaining({ description: 'Interim Certificate #2', amountMinor: 20_000_000 }),
     ]);
-    expect(m.lessBeforeTax).toEqual([{ kind: 'OTHER_DEDUCTIONS', minor: 100_000 }]);
+    expect(m.lessBeforeSubtotal).toEqual([{ kind: 'OTHER_DEDUCTIONS', minor: 100_000 }]);
     expect(m.subtotalMinor).toBe(19_900_000);
-    expect(m.lessAfterTax.map((a) => a.kind)).toEqual(['RETENTION', 'ADVANCE_RECOVERY']);
+    expect(m.lessAfterSubtotal.map((a) => a.kind)).toEqual(['RETENTION', 'ADVANCE_RECOVERY']);
     expect(ties(m)).toBe(m.totalMinor);
   });
 
@@ -89,8 +86,7 @@ describe('invoiceDocumentModel', () => {
           },
         ],
         subtotal: '1400',
-        vatAmount: '70',
-        totalAmount: '1470',
+        totalAmount: '1400',
       }),
     );
     expect(m.lines.map((l) => [l.description, l.accountCode, l.amountMinor])).toEqual([

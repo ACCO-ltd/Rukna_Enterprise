@@ -282,7 +282,6 @@ describe('SupplierBillCreateForm — direct expense', () => {
     expect(within(summary).getByRole('link', { name: 'Supplier invoice number' })).toBeInTheDocument();
     expect(within(summary).getByRole('link', { name: 'Project' })).toBeInTheDocument();
     expect(within(summary).getByRole('link', { name: 'Line 1 — Description' })).toBeInTheDocument();
-    expect(within(summary).getByRole('link', { name: 'Line 1 — Sales tax' })).toBeInTheDocument();
   });
 
   it('saves an overhead bill with the payload POST /bills expects, then opens it', async () => {
@@ -298,7 +297,6 @@ describe('SupplierBillCreateForm — direct expense', () => {
     await user.type(byId('bill-line-0-description'), 'Office rent');
     await chooseOption(user, byId('bill-line-0-profile'), 'OFFICE_EXPENSE');
     await user.type(byId('bill-line-0-unitPrice'), '400');
-    await user.type(byId('bill-line-0-vat'), '0');
 
     await user.click(screen.getByRole('button', { name: 'Save draft' }));
 
@@ -315,7 +313,6 @@ describe('SupplierBillCreateForm — direct expense', () => {
           quantity: 1,
           unitPrice: 400,
           netAmount: 400,
-          vatAmount: 0,
           expenseProfileCode: 'OFFICE_EXPENSE',
         },
       ],
@@ -336,7 +333,6 @@ describe('SupplierBillCreateForm — direct expense', () => {
     await user.type(byId('bill-line-0-description'), 'Office rent');
     await chooseOption(user, byId('bill-line-0-profile'), 'OFFICE_EXPENSE');
     await user.type(byId('bill-line-0-unitPrice'), '400');
-    await user.type(byId('bill-line-0-vat'), '0');
 
     await user.click(screen.getByRole('button', { name: 'Save bill' }));
 
@@ -361,7 +357,6 @@ describe('SupplierBillCreateForm — direct expense', () => {
     await user.clear(byId('bill-line-0-quantity'));
     await user.type(byId('bill-line-0-quantity'), '200');
     await user.type(byId('bill-line-0-unitPrice'), '9.50');
-    await user.type(byId('bill-line-0-vat'), '0');
 
     // Calculated until the clerk types: the product is the placeholder.
     expect(byId('bill-line-0-amount')).toHaveAttribute('placeholder', '1,900.00');
@@ -517,7 +512,6 @@ describe('SupplierBillCreateForm — against a purchase order', () => {
     await user.type(byId('bill-invoice-number'), 'INV-9044');
     await pickDate(user, byId('bill-date'), '2026-09-01');
     await chooseOption(user, byId('bill-line-0-profile'), 'OFFICE_EXPENSE');
-    await user.type(byId('bill-line-0-vat'), '0');
 
     await user.click(screen.getByRole('button', { name: 'Save draft' }));
 
@@ -536,7 +530,6 @@ describe('SupplierBillCreateForm — against a purchase order', () => {
           quantity: 285,
           unitPrice: 10,
           netAmount: 2850,
-          vatAmount: 0,
           expenseProfileCode: 'OFFICE_EXPENSE',
         },
       ],
@@ -562,7 +555,6 @@ const DRAFT_DIRECT = {
   purchaseOrderRevisionId: null,
   projectId: null,
   subtotal: '5660.00',
-  vatAmount: '0.00',
   totalAmount: '5660.00',
   outstandingAmount: '5660.00',
   returnedAt: '2026-09-20T10:00:00.000Z',
@@ -575,8 +567,6 @@ const DRAFT_DIRECT = {
       quantity: '1.0000',
       unitPrice: '5660.0000',
       netAmount: '5660.00',
-      vatAmount: '0.00',
-      grossAmount: '5660.00',
       expenseProfileCode: 'OFFICE_EXPENSE',
       projectId: null,
       boqNodeId: null,
@@ -603,8 +593,6 @@ const DRAFT_PO = {
       quantity: '185.0000',
       unitPrice: '10.0000',
       netAmount: '1850.00',
-      vatAmount: '0.00',
-      grossAmount: '1850.00',
       expenseProfileCode: 'OFFICE_EXPENSE',
       projectId: 'prj-1',
       boqNodeId: null,
@@ -650,7 +638,6 @@ describe('SupplierBillEditPage', () => {
             quantity: 1,
             unitPrice: 5060,
             netAmount: 5060,
-            vatAmount: 0,
             expenseProfileCode: 'OFFICE_EXPENSE',
           },
         ],
@@ -722,7 +709,6 @@ describe('SupplierBillEditPage', () => {
             quantity: 185,
             unitPrice: 10,
             netAmount: 1850,
-            vatAmount: 0,
             expenseProfileCode: 'OFFICE_EXPENSE',
           },
         ],

@@ -94,7 +94,6 @@
     "supplierPayments": "Supplier payments",
     "monthlyComparison": "Monthly comparison",
     "cashFlow": "Cash flow",
-    "vatReport": "VAT report",
     "receivablesAging": "Aging",
     "payablesAging": "Aging",
     "accountingSetup": "Setup",
@@ -135,7 +134,6 @@
       "acctSetup": "Setup & close"
     },
     "postingProfiles": "Posting profiles",
-    "taxCodes": "Tax",
     "invoiceSettings": "Invoice settings",
     "paymentsNeeded": "Payments needed",
     "paymentsNeededCount": "{count, plural, one {# order to pay} other {# orders to pay}}",
@@ -1623,7 +1621,7 @@
     "logoTooLarge": "Logo must be under 5 MB.",
     "logoUploadFailed": "Could not upload the logo. Try again.",
     "addressLabel": "Legal address",
-    "taxLabel": "Tax registration number",
+    "taxLabel": "Tax ID (TIN)",
     "colorLabel": "Brand color",
     "templateLabel": "Invoice layout",
     "templateStandard": "Standard",
@@ -2879,7 +2877,6 @@
       "fixTitle": "Fix these to record the contract",
       "noClient": "The project has no client. Assign one on the project before recording its contract.",
       "referenceHint": "Leave blank to number it automatically.",
-      "valueHint": "USD, before sales tax.",
       "state": {
         "new": "Not recorded",
         "dirty": "Not recorded yet",

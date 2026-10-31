@@ -10,7 +10,6 @@ import { BankAccountRepository } from './infrastructure/bank-account.repository.
 import { BankAccountSignatoryRepository } from './infrastructure/bank-account-signatory.repository.js';
 import { DocumentSequenceRepository } from './infrastructure/document-sequence.repository.js';
 import { JournalRepository } from './infrastructure/journal.repository.js';
-import { TaxCodeRepository } from './infrastructure/tax-code.repository.js';
 import { InvoiceDocumentPolicyRepository } from './infrastructure/invoice-document-policy.repository.js';
 import { AccountingPostingService } from './infrastructure/accounting-posting.service.js';
 
@@ -24,7 +23,6 @@ import { BankAccountSignatoryService } from './application/bank-account-signator
 import { OpeningBalanceService } from './application/opening-balance.service.js';
 import { ReconciliationService } from './application/reconciliation.service.js';
 import { PostingAccountResolver } from './application/posting-account-resolver.service.js';
-import { TaxCodeService } from './application/tax-code.service.js';
 import { InvoiceDocumentSettingsService } from './application/invoice-document-settings.service.js';
 import { InvoiceNumberingService } from './application/invoice-numbering.service.js';
 
@@ -35,7 +33,6 @@ import { FiscalYearController } from './presentation/fiscal-year.controller.js';
 import { BankAccountController } from './presentation/bank-account.controller.js';
 import { OpeningBalanceController } from './presentation/opening-balance.controller.js';
 import { ReconciliationController } from './presentation/reconciliation.controller.js';
-import { TaxCodeController } from './presentation/tax-code.controller.js';
 import { InvoiceDocumentSettingsController } from './presentation/invoice-document-settings.controller.js';
 import { InvoiceNumberingController } from './presentation/invoice-numbering.controller.js';
 import { AuditLogsModule } from '../../../platform/audit-logs/audit-logs.module.js';
@@ -56,7 +53,6 @@ import { BankTransferService } from './application/bank-transfer.service.js';
     BankAccountController,
     OpeningBalanceController,
     ReconciliationController,
-    TaxCodeController,
     InvoiceDocumentSettingsController,
     InvoiceNumberingController,
   ],
@@ -70,7 +66,6 @@ import { BankTransferService } from './application/bank-transfer.service.js';
     BankAccountSignatoryRepository,
     DocumentSequenceRepository,
     JournalRepository,
-    TaxCodeRepository,
     InvoiceDocumentPolicyRepository,
     // Phase 2 posting engine
     {
@@ -88,7 +83,6 @@ import { BankTransferService } from './application/bank-transfer.service.js';
     OpeningBalanceService,
     ReconciliationService,
     PostingAccountResolver,
-    TaxCodeService,
     InvoiceDocumentSettingsService,
     InvoiceNumberingService,
   ],
@@ -112,9 +106,6 @@ import { BankTransferService } from './application/bank-transfer.service.js';
     // ADR-040 one-step setup writes policy rows and bank accounts through these.
     AccountingConfigurationRepository,
     BankAccountRepository,
-    // ADR-041: invoicing resolves its tax code through this; setup reads tax codes through the repo.
-    TaxCodeService,
-    TaxCodeRepository,
   ],
 })
 export class AccountingCoreModule {}

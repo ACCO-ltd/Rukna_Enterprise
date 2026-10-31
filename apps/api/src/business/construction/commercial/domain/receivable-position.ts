@@ -6,7 +6,7 @@ const ZERO = new Decimal(0);
 
 /** A POSTED client invoice, as far as the project's receivable position needs it. */
 export interface PostedInvoiceFigures {
-  /** Before sales tax — the invoice's own subtotal, at whatever tax code it was raised. */
+  /** The invoice's own subtotal. */
   subtotal: Decimal;
   totalAmount: Decimal;
   outstandingAmount: Decimal;
@@ -17,7 +17,7 @@ export interface ReceivablePosition {
   grossIssued: Decimal;
   netBilled: Decimal;
   /**
-   * `netBilled` without sales tax: Σ invoice subtotals − Σ credit-note net amounts. The figure
+   * `netBilled`: Σ invoice subtotals − Σ credit-note net amounts. The figure
    * comparable with the contract value and with posted revenue; tax comes from each document,
    * never from an assumed rate.
    */
@@ -45,7 +45,7 @@ export interface ReceivablePosition {
 export function computeReceivablePosition(input: {
   invoices: PostedInvoiceFigures[];
   postedCreditNotesSum: Decimal;
-  /** The same credit notes before sales tax (their `netAmount`). */
+  /** The same credit notes' `netAmount`. */
   postedCreditNotesNetSum: Decimal;
   collectedSum: Decimal;
   today: Date;

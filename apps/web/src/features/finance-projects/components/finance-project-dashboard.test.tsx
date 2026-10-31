@@ -208,14 +208,14 @@ beforeEach(() => {
 const render = () => renderWithProviders(<FinanceProjectDashboard projectId="p1" />, { permissions: ['view:financial-position', 'manage:payable'] });
 
 describe('FinanceProjectDashboard — key figures', () => {
-  it('shows billed before tax against the contract, and collected against billed', () => {
+  it('shows billed against the contract, and collected against billed', () => {
     render();
     const strip = screen.getByLabelText('Project money at a glance');
-    expect(within(strip).getByText('Billed (excl. tax)')).toBeInTheDocument();
+    expect(within(strip).getByText('Billed')).toBeInTheDocument();
     expect(within(strip).getByText('$200,000.00')).toBeInTheDocument();
     expect(within(strip).getByText('40% of contract')).toBeInTheDocument();
-    // 105,000 of 210,000 billed incl. tax.
-    expect(within(strip).getByText('50% of billed (incl. tax)')).toBeInTheDocument();
+    // 105,000 of 210,000 billed.
+    expect(within(strip).getByText('50% of billed')).toBeInTheDocument();
     expect(within(strip).getByText('Nothing overdue')).toBeInTheDocument();
     expect(within(strip).getByText('70%')).toBeInTheDocument();
   });

@@ -57,7 +57,7 @@ export function PostInvoiceDialog({
       debitHeading={t('colDebit')}
       creditHeading={t('colCredit')}
       totalsLabel={t('totals')}
-      // Should be unreachable — `total = subtotal + vat` is set at creation. If it ever fires,
+      // Should be unreachable — the total is set from the lines at creation. If it ever fires,
       // the invoice row is inconsistent and the double-entry validator would reject it anyway.
       unbalanced={result.ok && !result.plan.balanced ? t('unbalanced') : null}
       problems={

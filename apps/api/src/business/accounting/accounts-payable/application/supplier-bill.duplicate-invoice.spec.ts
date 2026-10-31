@@ -24,7 +24,7 @@ const DTO = {
   dueDate: '2026-10-01',
   currencyCode: 'USD',
   lines: [
-    { description: 'Office rent', netAmount: 400, vatAmount: 0, expenseProfileCode: 'OFFICE_EXPENSE' },
+    { description: 'Office rent', netAmount: 400, expenseProfileCode: 'OFFICE_EXPENSE' },
   ],
 };
 

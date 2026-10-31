@@ -23,7 +23,6 @@ beforeAll(async () => {
   svc = buildServices(prisma);
   for (const [code, name, accountClass, subtype] of [
     ['42100', 'Equipment hire income', 'INCOME', 'OTHER_INCOME'],
-    ['22000', 'Sales tax payable', 'LIABILITY', 'VAT_OUTPUT_PAYABLE'],
   ] as const) {
     const a = await prisma.account.create({ data: { id: `${env.orgId}-${code}`, organizationId: env.orgId, code, normalBalance: 'CREDIT', createdBy: env.identity.userId } });
     await prisma.accountVersion.create({
@@ -39,7 +38,7 @@ afterAll(async () => {
 });
 
 const linesOf = (journalEntryId: string | null) =>
-  prisma.journalLine.findMany({ where: { journalEntryId: journalEntryId! }, select: { clientId: true, supplierId: true, taxCodeId: true, account: { select: { code: true } } } });
+  prisma.journalLine.findMany({ where: { journalEntryId: journalEntryId! }, select: { clientId: true, supplierId: true, account: { select: { code: true } } } });
 
 it('DIM-01: every line of an invoice, and of its reversal, names the client', async () => {
   const inv = await svc.clientInvoiceService.createManual(env.identity, {
@@ -49,14 +48,13 @@ it('DIM-01: every line of an invoice, and of its reversal, names the client', as
   await svc.clientInvoiceService.issue(env.identity, inv.id);
   const posted = await prisma.clientInvoice.findUniqueOrThrow({ where: { id: inv.id } });
   const lines = await linesOf(posted.postedJournalEntryId);
-  expect(lines.map((l) => l.account.code).sort()).toEqual(['22000', '42100', env.accounts.arCode].sort());
+  expect(lines.map((l) => l.account.code).sort()).toEqual(['42100', env.accounts.arCode].sort());
   expect(lines.every((l) => l.clientId === env.clientId)).toBe(true);
-  if (posted.taxCodeId) expect(lines.find((l) => l.account.code === '22000')!.taxCodeId).toBe(posted.taxCodeId);
 
   await svc.clientInvoiceService.reverse(env.identity, inv.id, { reversalDate: day, reason: 'Test' });
   const reversed = await prisma.clientInvoice.findUniqueOrThrow({ where: { id: inv.id } });
   const back = await linesOf(reversed.reversalJournalEntryId);
-  expect(back).toHaveLength(3);
+  expect(back).toHaveLength(2);
   expect(back.every((l) => l.clientId === env.clientId)).toBe(true);
 });
 

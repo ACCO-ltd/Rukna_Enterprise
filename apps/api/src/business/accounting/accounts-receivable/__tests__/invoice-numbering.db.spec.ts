@@ -68,7 +68,6 @@ beforeAll(async () => {
   svc = buildServices(prisma);
   numbering = new InvoiceNumberingService({ getClient: () => prisma } as unknown as TenancyService, new DocumentSequenceRepository());
   clientId = (await prisma.contract.findFirstOrThrow({ where: { organizationId: env.orgId } })).clientId;
-  await account('22000', 'Sales tax payable', 'LIABILITY', 'VAT_OUTPUT_PAYABLE');
   await account('42100', 'Equipment hire income', 'INCOME', 'OTHER_INCOME');
 }, 60_000);
 

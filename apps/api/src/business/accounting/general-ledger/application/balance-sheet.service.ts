@@ -1,9 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import type { RequestIdentity } from '@erp/types';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { SnapshotService } from './snapshot.service.js';
 import { PLReportService } from './pl-report.service.js';
+import { parseDateOnly } from '../../accounting-core/domain/calendar-day.js';
 
 export interface BSLine {
   accountId: string;
@@ -40,6 +41,23 @@ export interface BalanceSheetQueryDto {
   comparativeDate?: string;
 }
 
+/**
+ * Lines for both dates: every account with a balance on either, in code order. An account that
+ * held money on the comparison date and nothing now still shows, or the comparison column would
+ * not add up to its own total.
+ */
+function mergeLines(current: BSLine[], comparative?: BSLine[]): BSLine[] {
+  if (!comparative) return current;
+  const byId = new Map<string, BSLine>();
+  for (const l of current) byId.set(l.accountId, { ...l, comparativeBalance: '0.00' });
+  for (const l of comparative) {
+    const existing = byId.get(l.accountId);
+    if (existing) existing.comparativeBalance = l.balance;
+    else byId.set(l.accountId, { ...l, balance: '0.00', comparativeBalance: l.balance });
+  }
+  return [...byId.values()];
+}
+
 @Injectable()
 export class BalanceSheetService {
   constructor(
@@ -54,9 +72,9 @@ export class BalanceSheetService {
    * For CLOSED periods: uses PeriodAccountBalance snapshots (closingDebit/Credit).
    * For OPEN/LOCKED/REOPENED: queries live journal lines.
    *
-   * Current-period earnings: For an open fiscal year, the EQUITY section includes
-   * a computed "Current Year Earnings" line = net P&L from FY start to asOfDate,
-   * using live query. This line disappears after year-end close (P&L is rolled into RE).
+   * Earnings not yet closed: the EQUITY section adds "Net income this year" (P&L from the fiscal
+   * year's start to asOfDate) and, when an earlier year was never closed, "Earlier years not yet
+   * closed". Both disappear once year-end close rolls P&L into retained earnings.
    *
    * Assets = Liabilities + Equity (must balance within $0.01).
    */
@@ -67,7 +85,11 @@ export class BalanceSheetService {
     const prisma = this.tenancyService.getClient();
     const { activeOrganizationId: orgId } = identity;
 
-    const asOf = new Date(dto.asOfDate);
+    const asOf = dto.asOfDate?.length >= 10 ? parseDateOnly(dto.asOfDate) : null;
+    const comparativeAsOf = dto.comparativeDate ? (dto.comparativeDate.length >= 10 ? parseDateOnly(dto.comparativeDate) : null) : undefined;
+    if (!asOf || comparativeAsOf === null) {
+      throw new BadRequestException({ errorCode: 'DATE_INVALID', message: 'The date must be a real date written YYYY-MM-DD.' });
+    }
 
     const current = await this.computeForDate(identity, prisma, orgId, asOf);
     let comparative: Awaited<ReturnType<typeof this.computeForDate>> | null = null;
@@ -77,7 +99,7 @@ export class BalanceSheetService {
         identity,
         prisma,
         orgId,
-        new Date(dto.comparativeDate),
+        comparativeAsOf!,
       );
     }
 
@@ -94,34 +116,19 @@ export class BalanceSheetService {
         label: 'Assets',
         total: totalAssets.toFixed(2),
         ...(comparative ? { comparativeTotal: comparative.totalAssets.toFixed(2) } : {}),
-        lines: current.assetLines.map((l) => ({
-          ...l,
-          ...(comparative
-            ? { comparativeBalance: comparative!.assetLines.find((cl) => cl.accountId === l.accountId)?.balance ?? '0.00' }
-            : {}),
-        })),
+        lines: mergeLines(current.assetLines, comparative?.assetLines),
       },
       liabilities: {
         label: 'Liabilities',
         total: current.totalLiabilities.toFixed(2),
         ...(comparative ? { comparativeTotal: comparative.totalLiabilities.toFixed(2) } : {}),
-        lines: current.liabilityLines.map((l) => ({
-          ...l,
-          ...(comparative
-            ? { comparativeBalance: comparative!.liabilityLines.find((cl) => cl.accountId === l.accountId)?.balance ?? '0.00' }
-            : {}),
-        })),
+        lines: mergeLines(current.liabilityLines, comparative?.liabilityLines),
       },
       equity: {
         label: 'Equity',
         total: current.totalEquity.toFixed(2),
         ...(comparative ? { comparativeTotal: comparative.totalEquity.toFixed(2) } : {}),
-        lines: current.equityLines.map((l) => ({
-          ...l,
-          ...(comparative
-            ? { comparativeBalance: comparative!.equityLines.find((cl) => cl.accountId === l.accountId)?.balance ?? '0.00' }
-            : {}),
-        })),
+        lines: mergeLines(current.equityLines, comparative?.equityLines),
       },
       totalLiabilitiesAndEquity: totalLiabEquity.toFixed(2),
       balanced,
@@ -212,25 +219,48 @@ export class BalanceSheetService {
       }
     }
 
-    // Current Year Earnings: for open FY periods, add computed net income
-    if (period && period.fiscalYear.status !== 'CLOSED') {
-      const fyStart = period.fiscalYear.startDate;
+    // R-BS — earnings not yet closed into retained earnings. Every income, cost and expense balance
+    // up to the date is profit the books still hold on P&L accounts (a year-end close moves it to
+    // retained earnings, leaving them at zero). This year's share is the P&L from the fiscal year's
+    // start; anything left is an earlier year nobody has closed. Reading it from the balances, not
+    // from the period, keeps the sheet balanced on a date outside every period and when a prior
+    // year is still open.
+    const plIds = await prisma.account.findMany({
+      where: { organizationId: orgId, versions: { some: { effectiveTo: null, accountClass: { in: ['INCOME', 'COST_OF_SALES', 'EXPENSE'] } } } },
+      select: { id: true },
+    });
+    const unclosed = plIds.reduce((sum, a) => sum.plus(netBalanceMap.get(a.id) ?? 0), new Decimal(0)).negated();
+    const year = await prisma.fiscalYear.findFirst({
+      where: { organizationId: orgId, startDate: { lte: asOf }, endDate: { gte: asOf } },
+    });
+    let thisYear = new Decimal(0);
+    if (year && year.status !== 'CLOSED') {
       const pl = await this.plReportService.generate(identity, {
-        fromDate: fyStart.toISOString().slice(0, 10),
+        fromDate: year.startDate.toISOString().slice(0, 10),
         toDate: asOf.toISOString().slice(0, 10),
       });
-      const netIncome = new Decimal(pl.netIncome);
-
-      if (!netIncome.isZero()) {
-        equityLines.push({
-          accountId: 'CURRENT_YEAR_EARNINGS',
-          accountCode: 'CYE',
-          accountName: 'Current Year Earnings',
-          accountSubtype: 'CURRENT_YEAR_EARNINGS',
-          balance: netIncome.toFixed(2),
-        });
-        totalEquity = totalEquity.plus(netIncome);
-      }
+      thisYear = new Decimal(pl.netIncome);
+    }
+    const earlier = unclosed.minus(thisYear);
+    if (!earlier.isZero()) {
+      equityLines.push({
+        accountId: 'PRIOR_YEAR_EARNINGS',
+        accountCode: 'RE',
+        accountName: 'Earlier years not yet closed',
+        accountSubtype: 'RETAINED_EARNINGS',
+        balance: earlier.toFixed(2),
+      });
+      totalEquity = totalEquity.plus(earlier);
+    }
+    if (!thisYear.isZero()) {
+      equityLines.push({
+        accountId: 'CURRENT_YEAR_EARNINGS',
+        accountCode: 'CYE',
+        accountName: 'Net income this year',
+        accountSubtype: 'CURRENT_YEAR_EARNINGS',
+        balance: thisYear.toFixed(2),
+      });
+      totalEquity = totalEquity.plus(thisYear);
     }
 
     return { totalAssets, totalLiabilities, totalEquity, assetLines, liabilityLines, equityLines };

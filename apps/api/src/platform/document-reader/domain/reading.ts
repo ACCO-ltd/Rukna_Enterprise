@@ -35,7 +35,6 @@ export interface ParsedReading {
   date: string | null;
   currency: string | null;
   total: string | null;
-  taxAmount: string | null;
   lines: ReadLine[];
   warnings: string[];
 }
@@ -112,7 +111,8 @@ export function parseReaderAnswer(text: string): ParsedReading {
   const currency = currencyText && /^[A-Z]{3}$/.test(currencyText) ? currencyText : null;
   const total = decimal(o.total);
 
-  // A cross-check, never a correction: the person sees the disagreement and decides.
+  // A cross-check, never a correction: the person sees the disagreement and decides. A printed
+  // tax line is read only for this check — the books keep no tax.
   const amounts = lines.map((l) => l.amount);
   if (total !== null && amounts.length > 0 && amounts.every((a) => a !== null)) {
     const sum = amounts.reduce((s, a) => s + Number(a), 0);
@@ -134,7 +134,6 @@ export function parseReaderAnswer(text: string): ParsedReading {
     date: date(o.date),
     currency,
     total,
-    taxAmount: decimal(o.taxAmount),
     lines,
     warnings,
   };

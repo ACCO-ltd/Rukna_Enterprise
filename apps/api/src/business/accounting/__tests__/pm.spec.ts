@@ -616,7 +616,6 @@ async function postAr(env2: AccountingTestEnv, svc2: AccountingServices, id: str
       clientId: env2.clientId,
       invoiceDate: date,
       subtotal: new Decimal(amount),
-      vatAmount: new Decimal(0),
       totalAmount: new Decimal(amount),
       outstandingAmount: new Decimal(amount),
       currencyCode: 'USD',

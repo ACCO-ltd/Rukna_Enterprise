@@ -68,11 +68,11 @@ beforeAll(async () => {
     openApBills: [
       {
         supplierId: env.supplierId, supplierInvoiceNumber: 'QB-OB-A', billDate: day(), dueDate: day(),
-        currencyCode: 'USD', subtotal: 6000, vatAmount: 0, totalAmount: 6000, expenseProfileCode: env.postingProfileCode,
+        currencyCode: 'USD', subtotal: 6000, totalAmount: 6000, expenseProfileCode: env.postingProfileCode,
       },
       {
         supplierId: env.supplierId, supplierInvoiceNumber: 'QB-OB-B', billDate: day(), dueDate: day(),
-        currencyCode: 'USD', subtotal: 2000, vatAmount: 0, totalAmount: 2000, expenseProfileCode: env.postingProfileCode,
+        currencyCode: 'USD', subtotal: 2000, totalAmount: 2000, expenseProfileCode: env.postingProfileCode,
       },
     ],
   });

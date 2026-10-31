@@ -150,7 +150,6 @@ async function invoice(
       dueDate: opts.dueDate,
       currencyCode: 'USD',
       subtotal: opts.total ?? opts.outstanding,
-      vatAmount: 0,
       totalAmount: opts.total ?? opts.outstanding,
       outstandingAmount: opts.outstanding,
       billingAddressSnapshot: {},

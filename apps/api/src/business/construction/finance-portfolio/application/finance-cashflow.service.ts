@@ -30,6 +30,7 @@ import {
 } from '../domain/cashflow-forecast.policy.js';
 import { findBillsToPay, findOpenPostedBills } from '../infrastructure/bills-to-pay.query.js';
 import { findUnprojectedOpenInvoices } from '../infrastructure/unprojected-receivables.query.js';
+import { findCashOnHand } from '../infrastructure/cash-on-hand.query.js';
 import {
   findOpeningPayables,
   findOpeningReceivables,
@@ -65,10 +66,9 @@ export const CASHFLOW_BASIS: Record<CashflowLineType, string> = {
 };
 
 export const CASHFLOW_EXCLUSIONS: string[] = [
-  'The cash already in the bank — cumulative net starts from zero, not from today’s bank balance.',
   'Orders not coded to a project, and — in a project’s forecast, or for someone limited to some projects — invoices ' +
     'and bills not coded to a project (the company-wide forecast for someone who sees every project includes them).',
-  'Variations billed as separate charges until they are invoiced, and tax an invoice adds on top of a stage amount.',
+  'Variations billed as separate charges until they are invoiced.',
   'Stages of contracts that are not active yet.',
 ];
 
@@ -236,8 +236,13 @@ export class FinanceCashflowService {
       });
     }
 
+    // Company-wide, the running total starts from the cash held today; a project's forecast has
+    // no bank balance of its own, so it starts from zero.
+    const openingCash = new Map<string, Decimal>();
+    if (obScope.kind === 'ALL') openingCash.set('USD', await findCashOnHand(prisma, orgId, today));
+
     return {
-      currencies: buildForecast(items, grid, moneyVisible),
+      currencies: buildForecast(items, grid, moneyVisible, openingCash),
       bucket: size,
       from: grid.periods[0]!.start.toISOString().slice(0, 10),
       to: grid.periods.at(-1)!.end.toISOString().slice(0, 10),

@@ -46,7 +46,6 @@ export interface CollectionCreditNoteRow {
   creditNoteNumber: string | null;
   reason: string;
   netAmount: Decimal;
-  vatAmount: Decimal;
   totalAmount: Decimal;
   accountingDate: Date;
   postingStatus: string;
@@ -86,7 +85,7 @@ export interface PostedReceivables {
     deliveryCount: number;
   }[];
   postedCreditNotesSum: Decimal;
-  /** The same credit notes before sales tax. */
+  /** The same credit notes' net amounts. */
   postedCreditNotesNetSum: Decimal;
   collectedSum: Decimal;
 }
@@ -296,7 +295,6 @@ export class CommercialPrismaRepository {
             id: true,
             invoiceNumber: true,
             subtotal: true,
-            vatAmount: true,
             totalAmount: true,
             outstandingAmount: true,
             dueDate: true,
@@ -394,7 +392,7 @@ export class CommercialPrismaRepository {
    * Distinct from `findPaymentInstallments` (the cycle read, which carries the milestone link but not
    * the invoice) so neither read carries fields the other never uses.
    *
-   * Slice 4B: carries `vatAmount`, `outstandingAmount`, `dueDate`, and `deliveries` on the nested
+   * Slice 4B: carries `outstandingAmount`, `dueDate`, and `deliveries` on the nested
    * `clientInvoice` so the `documents[]` shape and package aggregates can be built without a
    * second round-trip.
    */
@@ -416,7 +414,6 @@ export class CommercialPrismaRepository {
             id: true,
             invoiceNumber: true,
             subtotal: true,
-            vatAmount: true,
             totalAmount: true,
             outstandingAmount: true,
             dueDate: true,
@@ -437,7 +434,7 @@ export class CommercialPrismaRepository {
    * the linked standalone invoice (for INVOICE additions) and the variation's reference/title, so the
    * Billing-Package read can group VO lines under their installment. Org-scoped; ordered oldest-first.
    *
-   * Slice 4B: carries `vatAmount`, `outstandingAmount`, `dueDate`, and `deliveries` on `clientInvoice`
+   * Slice 4B: carries `outstandingAmount`, `dueDate`, and `deliveries` on `clientInvoice`
    * so the VO document entries in `documents[]` have the full shape without extra queries.
    */
   findVariationAllocationsForContract(
@@ -461,7 +458,6 @@ export class CommercialPrismaRepository {
             id: true,
             invoiceNumber: true,
             subtotal: true,
-            vatAmount: true,
             totalAmount: true,
             outstandingAmount: true,
             dueDate: true,
@@ -540,7 +536,7 @@ export class CommercialPrismaRepository {
 
   /**
    * Every client invoice raised under a contract, with the detail Billing & Collection needs:
-   * the tax split, the settlement balance, the source document that produced it, and the posted
+   * the settlement balance, the source document that produced it, and the posted
    * allocations behind what has been collected.
    *
    * Deliberately separate from `findInvoices` (the narrow summary read). Widening that one would
@@ -557,7 +553,6 @@ export class CommercialPrismaRepository {
         dueDate: true,
         currencyCode: true,
         subtotal: true,
-        vatAmount: true,
         totalAmount: true,
         outstandingAmount: true,
         // ADR-046 §5 — retention held on certificate invoices and billed on release invoices, for the
@@ -737,7 +732,6 @@ export class CommercialPrismaRepository {
             creditNoteNumber: true,
             reason: true,
             netAmount: true,
-            vatAmount: true,
             totalAmount: true,
             accountingDate: true,
             postingStatus: true,
@@ -826,7 +820,6 @@ export class CommercialPrismaRepository {
         creditNoteNumber: r.creditNoteNumber,
         reason: r.reason,
         netAmount: r.netAmount,
-        vatAmount: r.vatAmount,
         totalAmount: r.totalAmount,
         accountingDate: r.accountingDate,
         postingStatus: r.postingStatus,
@@ -1280,8 +1273,6 @@ export class CommercialPrismaRepository {
         retentionAmount: true,
         advanceRecoveryAmount: true,
         retentionReleasedAmount: true,
-        vatAmount: true,
-        taxRate: true,
         totalAmount: true,
         outstandingAmount: true,
         documentStatus: true,

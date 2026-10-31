@@ -15,8 +15,8 @@ import type { Account } from './types';
  *
  * `PostingProfile` is the entity that should answer it server-side. `GET /posting-profiles`
  * now exists, but it maps a profile code to the EXPENSE account a supplier bill line posts to
- * (`PostingProfileVersion.accountId`); it says nothing about the AR control account, the VAT
- * account or the bank. So control accounts are resolved here, from the chart of accounts, by
+ * (`PostingProfileVersion.accountId`); it says nothing about the AR control account or the
+ * bank. So control accounts are resolved here, from the chart of accounts, by
  * the one field that states an account's role: `AccountVersion.accountSubtype`.
  *
  * ─── Why this refuses rather than guesses ───────────────────────────────────────
@@ -38,7 +38,6 @@ import type { Account } from './types';
 export type PostingRole =
   | 'AR_CONTROL'
   | 'REVENUE'
-  | 'VAT_OUTPUT'
   | 'UNAPPLIED_RECEIPTS'
   | 'AP_CONTROL'
   | 'SUPPLIER_ADVANCE'
@@ -55,7 +54,6 @@ export type PostingRole =
 const SUBTYPE_FOR: Record<PostingRole, string> = {
   AR_CONTROL: 'ACCOUNTS_RECEIVABLE',
   REVENUE: 'PROJECT_REVENUE',
-  VAT_OUTPUT: 'VAT_OUTPUT_PAYABLE',
   UNAPPLIED_RECEIPTS: 'UNAPPLIED_CLIENT_RECEIPTS',
   AP_CONTROL: 'ACCOUNTS_PAYABLE',
   SUPPLIER_ADVANCE: 'SUPPLIER_ADVANCE',
@@ -110,7 +108,7 @@ export function resolvePostingAccount(
 /**
  * Resolves several roles at once, keeping every failure rather than stopping at the first.
  *
- * A chart missing both its VAT account and its revenue account should say so once, not make
+ * A chart missing both its AR account and its revenue account should say so once, not make
  * the user fix one, press Post again, and meet the next.
  */
 export function resolvePostingAccounts(

@@ -14,8 +14,7 @@ import type { Account, ClientInvoice, PostInvoicePayload } from './types';
  *   Dr  Retention Receivable   retentionAmount          ← IPC invoices holding retention (ADR-046 §5)
  *   Dr  Client Advance         advanceRecoveryAmount    ← IPC invoices recovering an advance
  *     Cr  Revenue                          subtotal     ← omitted when 0 (a retention release)
- *     Cr  Output VAT                       vatAmount    ← only when vatAmount > 0
- *     Cr  Retention Receivable             retentionReleasedAmount  ← a retention release invoice
+ * *     Cr  Retention Receivable             retentionReleasedAmount  ← a retention release invoice
  *
  * The user is shown this before they confirm, because posting is irreversible except by a
  * reversal journal and an accountant should see which accounts are about to move.
@@ -26,8 +25,8 @@ import type { Account, ClientInvoice, PostInvoicePayload } from './types';
  * returns both, from the same resolution, so a screen cannot show one thing and send another.
  * If the two ever need to differ, that is a bug, not a feature.
  *
- * Arithmetic runs in integer minor units. `subtotal + vatAmount` summed as floats is how a
- * preview shows a total a cent away from the invoice it describes.
+ * Arithmetic runs in integer minor units. Amounts summed as floats is how a preview shows a
+ * total a cent away from the invoice it describes.
  */
 
 export interface JournalPreviewLine {
@@ -44,7 +43,7 @@ export interface InvoicePostPlan {
   totalCredit: string;
   /**
    * Always true for a well-formed invoice, since `total + retention + advance recovery =
-   * subtotal + vat` is enforced at creation. Surfaced anyway: if it is ever false the invoice row itself is inconsistent, and
+   * subtotal` is enforced at creation. Surfaced anyway: if it is ever false the invoice row itself is inconsistent, and
    * posting a journal the engine will reject is worse than refusing here.
    */
   balanced: boolean;
@@ -55,21 +54,10 @@ export type PlanResult =
   | { ok: true; plan: InvoicePostPlan }
   | { ok: false; problems: Extract<Resolution, { ok: false }>[] };
 
-/** True when the invoice carries VAT, and therefore needs a third line and a VAT account. */
-export function hasVat(invoice: ClientInvoice): boolean {
-  return toMinorUnits(invoice.vatAmount, MONEY_SCALE) > 0;
-}
-
-/**
- * The roles this particular invoice needs filled.
- *
- * A zero-VAT invoice does not need a VAT account, and demanding one would block posting on a
- * chart that is perfectly adequate for the invoice in hand.
- */
+/** The roles this particular invoice needs filled. */
 export function rolesForInvoice(invoice: ClientInvoice): PostingRole[] {
   // ADR-048 — a hand-typed invoice credits each line's own income account, never the revenue role.
   const roles: PostingRole[] = invoice.isManual ? ['AR_CONTROL'] : ['AR_CONTROL', 'REVENUE'];
-  if (hasVat(invoice)) roles.push('VAT_OUTPUT');
   if (retentionMinor(invoice) > 0 || retentionReleasedMinor(invoice) > 0) roles.push('RETENTION_RECEIVABLE');
   if (advanceRecoveryMinor(invoice) > 0) roles.push('CLIENT_ADVANCE');
   return roles;
@@ -105,11 +93,9 @@ export function planInvoicePost(
 
   const ar = resolved.get('AR_CONTROL')!;
   const revenue = resolved.get('REVENUE') ?? null;
-  const vat = resolved.get('VAT_OUTPUT') ?? null;
 
   const totalMinor = toMinorUnits(invoice.totalAmount, MONEY_SCALE);
   const subtotalMinor = toMinorUnits(invoice.subtotal, MONEY_SCALE);
-  const vatMinor = toMinorUnits(invoice.vatAmount, MONEY_SCALE);
 
   const lines: JournalPreviewLine[] = [
     {
@@ -142,15 +128,6 @@ export function planInvoicePost(
       accountName: accountName(revenue, locale),
       debit: null,
       credit: fromMinorUnits(subtotalMinor, MONEY_SCALE),
-    });
-  }
-
-  if (vat && vatMinor > 0) {
-    lines.push({
-      accountCode: vat.code,
-      accountName: accountName(vat, locale),
-      debit: null,
-      credit: fromMinorUnits(vatMinor, MONEY_SCALE),
     });
   }
 
@@ -189,7 +166,7 @@ export function planInvoicePost(
   const revenueMinor = invoice.isManual
     ? (invoice.lines ?? []).reduce((sum, line) => sum + toMinorUnits(line.amount, MONEY_SCALE), 0)
     : subtotalMinor;
-  const creditMinor = revenueMinor + (vat ? vatMinor : 0) + (releasedFrom ? releasedMinor : 0);
+  const creditMinor = revenueMinor + (releasedFrom ? releasedMinor : 0);
 
   return {
     ok: true,
@@ -201,7 +178,6 @@ export function planInvoicePost(
       payload: {
         arAccountCode: ar.code,
         ...(revenue && !invoice.isManual ? { revenueAccountCode: revenue.code } : {}),
-        ...(vat ? { vatAccountCode: vat.code } : {}),
       },
     },
   };

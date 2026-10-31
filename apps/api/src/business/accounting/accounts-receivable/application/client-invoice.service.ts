@@ -12,7 +12,6 @@ type TenantPrisma = Omit<
   PrismaClient,
   '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'
 >;
-import type { AccountWithCurrentVersion } from '../../accounting-core/infrastructure/account.repository.js';
 import type {
   RequestIdentity,
   ClientInvoiceSourceKind,
@@ -27,7 +26,6 @@ import {
 import { DocumentSequenceRepository } from '../../accounting-core/infrastructure/document-sequence.repository.js';
 import {
   PostingAccountResolver,
-  type ResolvedAccount,
 } from '../../accounting-core/application/posting-account-resolver.service.js';
 import { priceManualLines } from '../domain/manual-invoice.policy.js';
 import { ClientInvoiceRepository } from '../infrastructure/client-invoice.repository.js';
@@ -38,8 +36,6 @@ import {
   installmentBillingBlocker,
   installmentBillingBlockerMessage,
 } from '../domain/installment-billing-eligibility.js';
-import { clientInvoiceTax } from '../../accounting-core/domain/tax-amount.js';
-import { TaxCodeService } from '../../accounting-core/application/tax-code.service.js';
 import {
   normalizeInvoiceDocumentSnapshot,
   resolveInvoiceDocumentSnapshot,
@@ -87,11 +83,6 @@ export interface GenerateInvoiceFromIpcDto {
   invoiceDate: string;
   dueDate: string;
   paymentTerms?: string;
-  /**
-   * ADR-041 — the sales tax code to raise the invoice at. Omitted → the organisation's default.
-   * Any other code than the default needs `manage:accounting`.
-   */
-  taxCodeId?: string;
 }
 
 /** ADR-046 §5 — the retention release invoice: no amounts, they come from the contract's invoices. */
@@ -109,17 +100,12 @@ export interface GenerateInvoiceFromInstallmentDto {
   paymentTerms?: string;
   /**
    * ADR-030 CONST-COM-029 (Commercial redesign P1) — a signed money-string adjustment applied to the
-   * stage subtotal BEFORE tax, used to net an omission variation (STAGE_REDUCTION) into a stage that
+   * stage subtotal, used to net an omission variation (STAGE_REDUCTION) into a stage that
    * has NOT yet been invoiced. Defaults to `'0'` (no adjustment; the legacy path is unchanged). Must
    * be ≤ 0 in practice (an omission reduces the stage); a value that would drive the subtotal below
    * zero is refused. Additions are billed as their own invoice, never through this field.
    */
   subtotalAdjustment?: string;
-  /**
-   * ADR-041 — the sales tax code to raise the invoice at. Omitted → the organisation's default.
-   * Any other code than the default needs `manage:accounting`.
-   */
-  taxCodeId?: string;
 }
 
 /**
@@ -132,18 +118,13 @@ export interface GenerateStandaloneChargeDto {
   projectId: string;
   contractId: string;
   currencyCode: string;
-  /** The positive ex-tax charge (2dp money string). */
+  /** The positive charge (2dp money string). */
   subtotal: string;
   /** Human label snapshotted onto the invoice (`VO-001 — Extra scope`). */
   label: string;
   invoiceDate: string;
   dueDate: string;
   paymentTerms?: string;
-  /**
-   * ADR-041 — the sales tax code to raise the invoice at. Omitted → the organisation's default.
-   * Any other code than the default needs `manage:accounting`.
-   */
-  taxCodeId?: string;
 }
 
 export interface GenerateInvoiceFromSeparateChargeDto {
@@ -151,11 +132,6 @@ export interface GenerateInvoiceFromSeparateChargeDto {
   invoiceDate: string;
   dueDate: string;
   paymentTerms?: string;
-  /**
-   * ADR-041 — the sales tax code to raise the invoice at. Omitted → the organisation's default.
-   * Any other code than the default needs `manage:accounting`.
-   */
-  taxCodeId?: string;
 }
 
 /**
@@ -255,8 +231,6 @@ export interface PostInvoiceDto {
   arAccountCode?: string;
   /** Optional override for the Revenue account. Resolved server-side by role when absent. */
   revenueAccountCode?: string;
-  /** Optional override for the Output VAT account. Resolved server-side by role when vatAmount > 0. */
-  vatAccountCode?: string;
 }
 
 @Injectable()
@@ -270,7 +244,6 @@ export class ClientInvoiceService {
     private readonly postingPort: IAccountingPostingPort,
     private readonly documentService: InvoiceDocumentService,
     private readonly files: PlatformFileService,
-    private readonly taxCodes: TaxCodeService,
     @Optional() private readonly auditOutbox?: TransactionalAuditOutboxService,
     @Optional() private readonly accountingConfig?: AccountingConfigurationService,
   ) {}
@@ -300,32 +273,6 @@ export class ClientInvoiceService {
         message: `Invoices of ${settings.invoiceApprovalAbove!.toFixed(2)} or more need approval before they are issued. Ask an approver to approve it.`,
       });
     }
-  }
-
-  /**
-   * ADR-041 — the code, rate and amounts an invoice is raised at. Resolved after each path's
-   * idempotency read, so returning an existing invoice never re-checks tax.
-   */
-  private async taxFor(
-    prisma: Prisma.TransactionClient | ReturnType<TenancyService['getClient']>,
-    identity: RequestIdentity,
-    taxCodeId: string | undefined,
-    invoiceDate: string,
-    subtotal: Decimal,
-  ) {
-    const tax = await this.taxCodes.resolveForClientInvoice(
-      prisma,
-      identity,
-      taxCodeId,
-      invoiceDate,
-    );
-    const vatAmount = clientInvoiceTax(subtotal, tax.ratePercent);
-    return {
-      taxCodeId: tax.taxCodeId,
-      taxRate: tax.ratePercent,
-      vatAmount,
-      totalAmount: subtotal.plus(vatAmount),
-    };
   }
 
   /**
@@ -418,16 +365,15 @@ export class ClientInvoiceService {
     }
 
     const subtotal = period.revenue;
-    const tax = await this.taxFor(prisma, identity, dto.taxCodeId, dto.invoiceDate, subtotal);
-    // Amount due = revenue + tax − what the client holds back this period.
-    const amountDue = tax.totalAmount.minus(period.retention).minus(period.advanceRecovery);
+    // Amount due = revenue − what the client holds back this period.
+    const amountDue = subtotal.minus(period.retention).minus(period.advanceRecovery);
     if (!amountDue.gt(0)) {
       throw new BadRequestException({
         errorCode: 'IPC_AMOUNT_DUE_NOT_POSITIVE',
         message:
           `Retention (${period.retention.toFixed(2)}) and advance recovery ` +
           `(${period.advanceRecovery.toFixed(2)}) leave nothing due on this period's ` +
-          `${tax.totalAmount.toFixed(2)}. Review the certificate's deductions.`,
+          `${subtotal.toFixed(2)}. Review the certificate's deductions.`,
       });
     }
     const org = await this.snapshotOrgBranding(prisma, orgId);
@@ -443,10 +389,7 @@ export class ClientInvoiceService {
         dueDate: new Date(dto.dueDate),
         currencyCode: ipc.currency,
         subtotal,
-        vatAmount: tax.vatAmount,
         totalAmount: amountDue,
-        taxCodeId: tax.taxCodeId,
-        taxRate: tax.taxRate,
         certifiedGrossAmount: period.gross,
         retentionAmount: period.retention,
         advanceRecoveryAmount: period.advanceRecovery,
@@ -481,8 +424,8 @@ export class ClientInvoiceService {
    * back, less what earlier release invoices already billed, once the contract's retention has been
    * released (`POST /contracts/:id/retention/release`).
    *
-   * It earns no revenue and carries no tax — both were recognised when each IPC invoice was raised —
-   * so subtotal and VAT are zero and the amount due is the retention released. Posting moves it from
+   * It earns no revenue — that was recognised when each IPC invoice was raised — so the subtotal
+   * is zero and the amount due is the retention released. Posting moves it from
    * Retention Receivable to Accounts Receivable, and re-checks the amount (see `post`).
    *
    * Billing held − released (rather than one invoice per contract) lets a reversed release be raised
@@ -520,9 +463,6 @@ export class ClientInvoiceService {
     }
     const amount = position.due;
 
-    // Zero subtotal: the tax code is still recorded (ADR-041) at a nil rate, so no document prints a
-    // "Sales Tax (5%) 0.00" line under the released amount.
-    const tax = await this.taxFor(prisma, identity, undefined, dto.invoiceDate, new Decimal(0));
     const org = await this.snapshotOrgBranding(prisma, orgId);
     return this.repo.create(prisma, {
       organizationId: orgId,
@@ -534,10 +474,7 @@ export class ClientInvoiceService {
       dueDate: new Date(dto.dueDate),
       currencyCode: contract.currency,
       subtotal: new Decimal(0),
-      vatAmount: new Decimal(0),
       totalAmount: amount,
-      taxCodeId: tax.taxCodeId,
-      taxRate: new Decimal(0),
       retentionReleasedAmount: amount,
       paymentTerms: dto.paymentTerms,
       billingAddressSnapshot: {
@@ -639,7 +576,6 @@ export class ClientInvoiceService {
           'exceed the stage value. Reduce the omission or bill it as a credit note.',
       );
     }
-    const tax = await this.taxFor(prisma, identity, dto.taxCodeId, dto.invoiceDate, subtotal);
     const org = await this.snapshotOrgBranding(prisma, orgId);
 
     try {
@@ -653,10 +589,7 @@ export class ClientInvoiceService {
         dueDate: new Date(dto.dueDate),
         currencyCode: contract.currency,
         subtotal,
-        vatAmount: tax.vatAmount,
-        totalAmount: tax.totalAmount,
-        taxCodeId: tax.taxCodeId,
-        taxRate: tax.taxRate,
+        totalAmount: subtotal,
         paymentTerms: dto.paymentTerms,
         billingAddressSnapshot: {
           client: {
@@ -734,7 +667,6 @@ export class ClientInvoiceService {
     }
 
     const subtotal = new Decimal(node.totalAmount.toString()).toDecimalPlaces(2);
-    const tax = await this.taxFor(prisma, identity, dto.taxCodeId, dto.invoiceDate, subtotal);
     const org = await this.snapshotOrgBranding(prisma, orgId);
 
     try {
@@ -751,10 +683,7 @@ export class ClientInvoiceService {
         // document, consistent with the installment path.
         currencyCode: contract.currency,
         subtotal,
-        vatAmount: tax.vatAmount,
-        totalAmount: tax.totalAmount,
-        taxCodeId: tax.taxCodeId,
-        taxRate: tax.taxRate,
+        totalAmount: subtotal,
         paymentTerms: dto.paymentTerms,
         billingAddressSnapshot: {
           client: {
@@ -781,9 +710,8 @@ export class ClientInvoiceService {
 
   /**
    * ADR-048 — a hand-typed DRAFT invoice for a sale outside any construction contract (equipment
-   * hire, surplus materials, services). Its subtotal is the sum of its priced lines; tax follows the
-   * same tax-code rule as every invoice (ADR-041). It never carries a project, contract or source
-   * tag, so contract billing stays source-only (ADR-037). Same lifecycle afterwards: approve → post.
+   * hire, surplus materials, services). Its subtotal is the sum of its priced lines. It never carries a
+   * project, contract or source tag, so contract billing stays source-only (ADR-037). Same lifecycle afterwards: approve → post.
    */
   async createManual(identity: RequestIdentity, dto: ManualInvoiceInput) {
     const prisma = this.tenancyService.getClient();
@@ -904,7 +832,6 @@ export class ClientInvoiceService {
       throw new BadRequestException({ errorCode: 'MANUAL_INVOICE_INVALID', message: problems.join(' '), details: { problems } });
     }
 
-    const tax = await this.taxFor(prisma, identity, dto.taxCodeId, dto.invoiceDate, priced.subtotal);
     const org = await this.snapshotOrgBranding(prisma as never, orgId);
     return {
       header: {
@@ -914,10 +841,7 @@ export class ClientInvoiceService {
         dueDate: new Date(dto.dueDate),
         currencyCode: dto.currencyCode,
         subtotal: priced.subtotal,
-        vatAmount: tax.vatAmount,
-        totalAmount: tax.totalAmount,
-        taxCodeId: tax.taxCodeId,
-        taxRate: tax.taxRate,
+        totalAmount: priced.subtotal,
         paymentTerms: dto.paymentTerms,
         clientReference: dto.clientReference?.trim() || null,
         notes: dto.notes?.trim() || null,
@@ -956,7 +880,7 @@ export class ClientInvoiceService {
    * lives in Commercial). It is INTERNAL-only: NOT idempotent (a VO invoice carries no source column, so
    * there is nothing to key on) and NOT controller-exposed — the orchestrator owns the exactly-once
    * guard via the allocation ledger before it calls this. Same lifecycle as every other AR document:
-   * DRAFT / NOT_POSTED, tax from the same tax-code rule (ADR-041), no GL posting here.
+   * DRAFT / NOT_POSTED, no GL posting here.
    */
   async generateStandaloneCharge(
     identity: RequestIdentity,
@@ -967,7 +891,6 @@ export class ClientInvoiceService {
     const { activeOrganizationId: orgId, userId } = identity;
 
     const subtotal = new Decimal(dto.subtotal).toDecimalPlaces(2);
-    const tax = await this.taxFor(prisma, identity, dto.taxCodeId, dto.invoiceDate, subtotal);
     // Client is looked up by id only, deliberately — this method must not read the VO or the
     // contract (Accounting never imports Variations); Client is Accounting's own domain.
     const [org, client] = await Promise.all([
@@ -992,10 +915,7 @@ export class ClientInvoiceService {
       dueDate: new Date(dto.dueDate),
       currencyCode: dto.currencyCode,
       subtotal,
-      vatAmount: tax.vatAmount,
-      totalAmount: tax.totalAmount,
-      taxCodeId: tax.taxCodeId,
-      taxRate: tax.taxRate,
+      totalAmount: subtotal,
       paymentTerms: dto.paymentTerms,
       billingAddressSnapshot: {
         client: client
@@ -1074,7 +994,7 @@ export class ClientInvoiceService {
 
   /**
    * Post the ClientInvoice to the GL.
-   * EVT-AR-001: Dr AR / Cr Revenue / Cr VAT Output
+   * EVT-AR-001: Dr AR / Cr Revenue
    */
   async post(
     identity: RequestIdentity,
@@ -1172,19 +1092,9 @@ export class ClientInvoiceService {
       ? await this.resolver.resolveByCodeOrRole(outerPrisma, orgId, dto.revenueAccountCode, 'PROJECT_REVENUE')
       : null;
 
-    let vatAccount: ResolvedAccount | null = null;
-    if (new Decimal(invoice.vatAmount.toString()).gt(0)) {
-      vatAccount = await this.resolver.resolveByCodeOrRole(
-        outerPrisma,
-        orgId,
-        dto.vatAccountCode,
-        'VAT_OUTPUT_PAYABLE',
-      );
-    }
-
     // ADR-046 §5 — what an IPC invoice holds back this period is an asset (retention) or clears the
     // client's advance, never lost: the AR debit is the amount due, and these debits make up the
-    // difference to revenue + tax. Resolved only when present, so a chart without a retention
+    // difference to revenue. Resolved only when present, so a chart without a retention
     // account (ADR-040: ACCO uses none) posts every other invoice unchanged.
     const retentionAmount = new Decimal(invoice.retentionAmount.toString());
     const advanceRecoveryAmount = new Decimal(invoice.advanceRecoveryAmount.toString());
@@ -1207,7 +1117,6 @@ export class ClientInvoiceService {
 
     const runPost = async (activeTx: Prisma.TransactionClient) => {
       const subtotal = new Decimal(invoice.subtotal.toString());
-      const vatAmount = new Decimal(invoice.vatAmount.toString());
       const totalAmount = new Decimal(invoice.totalAmount.toString());
 
       // Step 6 (fix forward, owner decision 2026-10-28): every line of the invoice carries the
@@ -1244,16 +1153,6 @@ export class ClientInvoiceService {
           debitAmount: new Decimal(0),
           creditAmount: subtotal,
           ...tags,
-        });
-      }
-
-      if (vatAccount && vatAmount.gt(0)) {
-        lines.push({
-          accountId: (vatAccount as AccountWithCurrentVersion).id,
-          debitAmount: new Decimal(0),
-          creditAmount: vatAmount,
-          ...tags,
-          taxCodeId: invoice.taxCodeId ?? undefined,
         });
       }
 
@@ -1372,7 +1271,7 @@ export class ClientInvoiceService {
 
   /**
    * Reverse a posted ClientInvoice.
-   * EVT-AR-002: Dr Revenue + Dr VAT (if any) / Cr AR — the mirror of EVT-AR-001.
+   * EVT-AR-002: Dr Revenue / Cr AR — the mirror of EVT-AR-001.
    * Guard: invoice must have zero active (POSTED) receipt allocations.
    */
   async reverse(
@@ -1482,7 +1381,6 @@ export class ClientInvoiceService {
             // project revenue (and the project P&L) kept a reversed invoice.
             projectId: l.projectId ?? undefined,
             contractId: l.contractId ?? undefined,
-            taxCodeId: l.taxCodeId ?? undefined,
             memo: `Reversal: ${l.description ?? ''}`,
           })),
         },
@@ -1684,8 +1582,6 @@ export class ClientInvoiceService {
       message: invoice.notes,
       currencyCode: invoice.currencyCode,
       subtotal: documentSubtotal.toFixed(2),
-      vatAmount: invoice.vatAmount.toString(),
-      taxRatePercent: invoice.taxRate.toString(),
       retentionAmount: invoice.retentionAmount.toString(),
       advanceRecoveryAmount: invoice.advanceRecoveryAmount.toString(),
       totalAmount: invoice.totalAmount.toString(),

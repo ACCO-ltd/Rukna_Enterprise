@@ -67,7 +67,7 @@ Everything sensible in the system is one of these three flows. Full detail in
   `Business event → Posting rule → Journal → GL → Trial Balance → P&L / Balance Sheet`.
 
 **Commercial ≠ Accounting.** An IPC certifying $100k is a commercial fact; whether an AR invoice
-was posted, to which account, in which period, with which VAT, is an accounting fact.
+was posted, to which account, in which period, is an accounting fact.
 
 ## Two ledgers, kept deliberately separate
 

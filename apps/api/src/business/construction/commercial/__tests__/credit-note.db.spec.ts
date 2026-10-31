@@ -1,14 +1,13 @@
 /**
  * Slice 6B — CreditNoteService DB integration tests.
  *
- * Seed: org + project + contract + POSTED invoice (net 100,000 / VAT 5,000 / total 105,000 / outstanding 105,000).
+ * Seed: org + project + contract + POSTED invoice (total 100,000 / outstanding 100,000).
  *
  * CN-DB-01: createCreditNote produces a NOT_POSTED credit note
  * CN-DB-02: postCreditNote produces CN-000001 and sets status to POSTED
  * CN-DB-03: posted journal is balanced (Σ debit = Σ credit)
  * CN-DB-04: AR journal line is a CREDIT of totalAmount
  * CN-DB-05: Revenue journal line is a DEBIT of netAmount
- * CN-DB-06: VAT journal line is a DEBIT of vatAmount
  * CN-DB-07: invoice.outstandingAmount is decremented by totalAmount after posting
  * CN-DB-08: original invoice totalAmount is not changed
  * CN-DB-09: credit > outstanding → CREDIT_EXCEEDS_OUTSTANDING
@@ -39,16 +38,13 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
   let identity: RequestIdentity;
   let contractId: string;
   let projectId: string;
-  let vatAccountCode: string;
 
   // Seeded accounts from fixture:
   // AR-TEST  → ACCOUNTS_RECEIVABLE
   // REV-TEST → PROJECT_REVENUE
-  // VT-TEST  → VAT_OUTPUT_PAYABLE (created below)
 
   const NET = '100000.00';
-  const VAT = '5000.00';
-  const TOTAL = '105000.00';
+  const TOTAL = '100000.00';
 
   async function makePostedInvoice(outstandingOverride?: string): Promise<string> {
     const inv = await prisma.clientInvoice.create({
@@ -60,7 +56,6 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
         invoiceDate: new Date('2026-09-01'),
         dueDate: new Date('2026-10-31'),
         subtotal: new Decimal(NET),
-        vatAmount: new Decimal(VAT),
         totalAmount: new Decimal(TOTAL),
         outstandingAmount: new Decimal(outstandingOverride ?? TOTAL),
         currencyCode: 'USD',
@@ -83,7 +78,6 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
         contractId,
         invoiceDate: new Date('2026-09-01'),
         subtotal: new Decimal(NET),
-        vatAmount: new Decimal(VAT),
         totalAmount: new Decimal(TOTAL),
         outstandingAmount: new Decimal(TOTAL),
         currencyCode: 'USD',
@@ -108,34 +102,6 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
     });
     contractId = contract.id;
     projectId = contract.projectId;
-
-    // Seed a VAT_OUTPUT_PAYABLE account (not in fixture factory by default)
-    vatAccountCode = `VT-${env.orgId.slice(-8)}`;
-    const vatAccId = `${env.orgId}-${vatAccountCode}`;
-    await prisma.account.create({
-      data: {
-        id: vatAccId,
-        organizationId: env.orgId,
-        code: vatAccountCode,
-        normalBalance: 'CREDIT',
-        createdBy: identity.userId,
-      },
-    });
-    await prisma.accountVersion.create({
-      data: {
-        accountId: vatAccId,
-        versionNumber: 1,
-        name: 'VAT Output Payable',
-        accountClass: 'LIABILITY',
-        accountSubtype: 'VAT_OUTPUT_PAYABLE',
-        isPostingAllowed: true,
-        isControlAccount: false,
-        controlPostingPolicy: 'UNRESTRICTED',
-        effectiveFrom: new Date('2025-01-01'),
-        effectiveTo: null,
-        changedBy: identity.userId,
-      },
-    });
 
     // Also add CREDIT_NOTE to document number sequences
     await prisma.documentNumberSequence.create({
@@ -186,8 +152,7 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
 
     expect(cn.postingStatus).toBe('NOT_POSTED');
     expect(new Decimal(cn.netAmount.toString()).toFixed(2)).toBe('1000.00');
-    expect(new Decimal(cn.vatAmount.toString()).toFixed(2)).toBe('50.00');
-    expect(new Decimal(cn.totalAmount.toString()).toFixed(2)).toBe('1050.00');
+    expect(new Decimal(cn.totalAmount.toString()).toFixed(2)).toBe('1000.00');
   });
 
   // ─── CN-DB-02: postCreditNote produces CN-000001 and POSTED ──────────────────
@@ -206,7 +171,6 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
       creditNoteId: cn.id,
       arAccountCode: env.accounts.arCode,
       revenueAccountCode: env.accounts.revCode,
-      vatAccountCode,
     });
 
     expect(posted.postingStatus).toBe('POSTED');
@@ -233,7 +197,6 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
       creditNoteId: cn.id,
       arAccountCode: env.accounts.arCode,
       revenueAccountCode: env.accounts.revCode,
-      vatAccountCode,
     });
 
     const lines = await prisma.journalLine.findMany({
@@ -268,7 +231,6 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
       creditNoteId: cn.id,
       arAccountCode: env.accounts.arCode,
       revenueAccountCode: env.accounts.revCode,
-      vatAccountCode,
     });
 
     const lines = await prisma.journalLine.findMany({
@@ -277,8 +239,7 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
 
     expect(lines).toHaveLength(1);
     const arLine = lines[0]!;
-    // totalAmount = 3000 * 1.05 = 3150
-    expect(new Decimal(arLine.creditAmount.toString()).toFixed(2)).toBe('3150.00');
+    expect(new Decimal(arLine.creditAmount.toString()).toFixed(2)).toBe('3000.00');
     expect(new Decimal(arLine.debitAmount.toString()).toFixed(2)).toBe('0.00');
   });
 
@@ -298,7 +259,6 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
       creditNoteId: cn.id,
       arAccountCode: env.accounts.arCode,
       revenueAccountCode: env.accounts.revCode,
-      vatAccountCode,
     });
 
     const lines = await prisma.journalLine.findMany({
@@ -309,37 +269,6 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
     const revLine = lines[0]!;
     expect(new Decimal(revLine.debitAmount.toString()).toFixed(2)).toBe('4000.00');
     expect(new Decimal(revLine.creditAmount.toString()).toFixed(2)).toBe('0.00');
-  });
-
-  // ─── CN-DB-06: VAT line is a DEBIT of vatAmount ──────────────────────────────
-
-  it('CN-DB-06: VAT journal line is a DEBIT of vatAmount', async () => {
-    const invoiceId = await makePostedInvoice();
-
-    const cn = await service.createCreditNote(identity, {
-      invoiceId,
-      reason: 'CORRECTION',
-      netAmount: '5000.00',
-      accountingDate: '2026-09-17',
-    });
-
-    const posted = await service.postCreditNote(identity, {
-      creditNoteId: cn.id,
-      arAccountCode: env.accounts.arCode,
-      revenueAccountCode: env.accounts.revCode,
-      vatAccountCode,
-    });
-
-    const vatAccId = `${env.orgId}-${vatAccountCode}`;
-    const lines = await prisma.journalLine.findMany({
-      where: { journalEntryId: posted.postedJournalEntryId!, accountId: vatAccId },
-    });
-
-    expect(lines).toHaveLength(1);
-    const vatLine = lines[0]!;
-    // vatAmount = 5000 * 0.05 = 250
-    expect(new Decimal(vatLine.debitAmount.toString()).toFixed(2)).toBe('250.00');
-    expect(new Decimal(vatLine.creditAmount.toString()).toFixed(2)).toBe('0.00');
   });
 
   // ─── CN-DB-07: invoice.outstandingAmount is decremented by totalAmount ────────
@@ -358,7 +287,6 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
       creditNoteId: cn.id,
       arAccountCode: env.accounts.arCode,
       revenueAccountCode: env.accounts.revCode,
-      vatAccountCode,
     });
 
     const invoice = await prisma.clientInvoice.findUniqueOrThrow({
@@ -366,8 +294,7 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
       select: { outstandingAmount: true },
     });
 
-    // CN totalAmount = 10000 + 500 = 10500; original outstanding was 105000
-    const expectedOutstanding = new Decimal(TOTAL).minus('10500.00');
+    const expectedOutstanding = new Decimal(TOTAL).minus('10000.00');
     expect(new Decimal(invoice.outstandingAmount.toString()).toFixed(2)).toBe(
       expectedOutstanding.toFixed(2),
     );
@@ -389,7 +316,6 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
       creditNoteId: cn.id,
       arAccountCode: env.accounts.arCode,
       revenueAccountCode: env.accounts.revCode,
-      vatAccountCode,
     });
 
     const invoice = await prisma.clientInvoice.findUniqueOrThrow({
@@ -409,7 +335,7 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
     const err = await service.createCreditNote(identity, {
       invoiceId,
       reason: 'OMISSION',
-      netAmount: '1000.00', // 1000 + 50 = 1050 > 500
+      netAmount: '1000.00', // 1000 > 500
       accountingDate: '2026-09-17',
     }).catch((e) => e);
 
@@ -435,7 +361,6 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
       creditNoteId: cn.id,
       arAccountCode: env.accounts.arCode,
       revenueAccountCode: env.accounts.revCode,
-      vatAccountCode,
     });
 
     await expect(
@@ -443,7 +368,6 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
         creditNoteId: cn.id,
         arAccountCode: env.accounts.arCode,
         revenueAccountCode: env.accounts.revCode,
-        vatAccountCode,
       }),
     ).rejects.toThrow(ConflictException);
   });
@@ -479,7 +403,6 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
       creditNoteId: cn.id,
       arAccountCode: env.accounts.arCode,
       revenueAccountCode: env.accounts.revCode,
-      vatAccountCode,
     });
 
     expect(posted.postingStatus).toBe('POSTED');
@@ -502,7 +425,6 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
         creditNoteId: cn.id,
         arAccountCode: env.accounts.arCode,
         revenueAccountCode: env.accounts.revCode,
-        vatAccountCode,
       }),
     ).rejects.toThrow(BadRequestException);
   });
@@ -524,7 +446,6 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
         creditNoteId: cn.id,
         arAccountCode: env.accounts.arCode,
         revenueAccountCode: env.accounts.revCode,
-        vatAccountCode,
       }),
     ).rejects.toThrow(BadRequestException);
   });
@@ -532,7 +453,7 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
   // ─── CN-DB-15/16: negative variation exact-once protection ───────────────────
 
   it('CN-DB-15: first credit note against a negative variation succeeds', async () => {
-    // Seed a negative variation: VO total = -5,000 ex-tax
+    // Seed a negative variation: VO total = -5,000
     const variation = await prisma.variationOrder.create({
       data: {
         organizationId: env.orgId,
@@ -555,7 +476,7 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
 
     const invoiceId = await makePostedInvoice();
 
-    // First CN: 4,000 ex-tax → 4,200 inc VAT — within the variation's -5,000 limit
+    // First CN: 4,000 — within the variation's -5,000 limit
     const cn = await service.createCreditNote(identity, {
       invoiceId,
       reason: 'NEGATIVE_VARIATION',
@@ -592,7 +513,7 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
 
     const invoiceId = await makePostedInvoice();
 
-    // First CN: 4,000 net → 4,200 total (uses 4,200 of 5,250 variation limit incl 5% VAT)
+    // First CN: 4,000 (uses 4,000 of the variation's 5,000)
     await service.createCreditNote(identity, {
       invoiceId,
       reason: 'NEGATIVE_VARIATION',
@@ -601,7 +522,7 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
       sourceVariationId: variation.id,
     });
 
-    // Second CN: 2,000 net → 2,100 total; 4,200 + 2,100 = 6,300 > 5,250 → rejected
+    // Second CN: 2,000; 4,000 + 2,000 = 6,000 > 5,000 → rejected
     const err = await service.createCreditNote(identity, {
       invoiceId,
       reason: 'NEGATIVE_VARIATION',
@@ -613,59 +534,6 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
     expect(err).toBeInstanceOf(BadRequestException);
   });
 
-  // ─── CN-DB-17: zero-VAT invoice → credit note vatAmount = 0 ──────────────────
-
-  it('CN-DB-17: credit note derives tax basis from original invoice — zero-VAT invoice produces zero-VAT credit note', async () => {
-    // Invoice with zero VAT (subtotal 100,000 / vatAmount 0 / total 100,000)
-    const zeroVatInvoice = await prisma.clientInvoice.create({
-      data: {
-        organizationId: env.orgId,
-        clientId: env.clientId,
-        projectId,
-        contractId,
-        invoiceDate: new Date('2026-09-01'),
-        dueDate: new Date('2026-10-31'),
-        subtotal: new Decimal('100000.00'),
-        vatAmount: new Decimal('0.00'),
-        totalAmount: new Decimal('100000.00'),
-        outstandingAmount: new Decimal('100000.00'),
-        currencyCode: 'USD',
-        billingAddressSnapshot: {},
-        postingStatus: 'POSTED',
-        documentStatus: 'APPROVED',
-        createdBy: identity.userId,
-      },
-      select: { id: true },
-    });
-
-    const cn = await service.createCreditNote(identity, {
-      invoiceId: zeroVatInvoice.id,
-      reason: 'CORRECTION',
-      netAmount: '10000.00',
-      accountingDate: '2026-09-17',
-    });
-
-    expect(new Decimal(cn.vatAmount.toString()).toFixed(2)).toBe('0.00');
-    expect(new Decimal(cn.totalAmount.toString()).toFixed(2)).toBe('10000.00');
-  });
-
-  // ─── CN-DB-18: tax basis proof — 5% rate invoice → 500 VAT on 10k net ────────
-
-  it('CN-DB-18: standard 5% invoice: credit note derives 500 VAT on net 10,000', async () => {
-    const invoiceId = await makePostedInvoice(); // net 100,000 / vat 5,000 → rate = 0.05
-
-    const cn = await service.createCreditNote(identity, {
-      invoiceId,
-      reason: 'PRICE_ERROR',
-      netAmount: '10000.00',
-      accountingDate: '2026-09-17',
-    });
-
-    expect(new Decimal(cn.netAmount.toString()).toFixed(2)).toBe('10000.00');
-    expect(new Decimal(cn.vatAmount.toString()).toFixed(2)).toBe('500.00');
-    expect(new Decimal(cn.totalAmount.toString()).toFixed(2)).toBe('10500.00');
-  });
-
   // ─── CN-DB-19/20/21: post-time race-condition protection ─────────────────────
   //
   // These three tests prove that postCreditNote() re-validates inside the
@@ -674,10 +542,10 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
   // financial invariant.
 
   it('CN-DB-19: payment reduces outstanding between create and post → post rejected', async () => {
-    // Invoice: subtotal 100,000 / vat 5,000 / total 105,000 / outstanding 105,000
+    // Invoice: total 100,000 / outstanding 100,000
     const invoiceId = await makePostedInvoice();
 
-    // Create CN using full outstanding — passes create-time check (0 + 105,000 ≤ 105,000)
+    // Create CN using full outstanding — passes create-time check (0 + 100,000 ≤ 100,000)
     const cn = await service.createCreditNote(identity, {
       invoiceId,
       reason: 'OMISSION',
@@ -689,15 +557,14 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
     // Simulate a 5,000 payment arriving between create and post
     await prisma.clientInvoice.update({
       where: { id: invoiceId },
-      data: { outstandingAmount: new Decimal('100000.00') },
+      data: { outstandingAmount: new Decimal('95000.00') },
     });
 
-    // Post should be rejected: CN total 105,000 > current outstanding 100,000
+    // Post should be rejected: CN total 100,000 > current outstanding 95,000
     const err = await service.postCreditNote(identity, {
       creditNoteId: cn.id,
       arAccountCode: env.accounts.arCode,
       revenueAccountCode: env.accounts.revCode,
-      vatAccountCode,
     }).catch((e) => e);
 
     expect(err).toBeInstanceOf(BadRequestException);
@@ -705,12 +572,12 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
       errorCode: 'CREDIT_EXCEEDS_OUTSTANDING',
     });
 
-    // Outstanding must remain at 100,000 — no partial decrement
+    // Outstanding must remain at 95,000 — no partial decrement
     const invoice = await prisma.clientInvoice.findUniqueOrThrow({
       where: { id: invoiceId },
       select: { outstandingAmount: true },
     });
-    expect(new Decimal(invoice.outstandingAmount.toString()).toFixed(2)).toBe('100000.00');
+    expect(new Decimal(invoice.outstandingAmount.toString()).toFixed(2)).toBe('95000.00');
 
     // No journal entry was created for this CN
     const rejectedCn = await prisma.creditNote.findUniqueOrThrow({ where: { id: cn.id } });
@@ -719,10 +586,10 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
   });
 
   it('CN-DB-20: first post depletes outstanding → second post rejected', async () => {
-    // Invoice: outstanding 105,000
+    // Invoice: outstanding 100,000
     const invoiceId = await makePostedInvoice();
 
-    // CN-A created via service — passes create-time check (0 + 105,000 ≤ 105,000)
+    // CN-A created via service — passes create-time check (0 + 100,000 ≤ 100,000)
     const cnA = await service.createCreditNote(identity, {
       invoiceId,
       reason: 'CORRECTION',
@@ -731,15 +598,14 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
     });
 
     // CN-B inserted directly — simulates a concurrent request that bypassed the
-    // sequential create-time check (both requests saw outstanding = 105,000)
+    // sequential create-time check (both requests saw outstanding = 100,000)
     const cnB = await prisma.creditNote.create({
       data: {
         organizationId: env.orgId,
         invoiceId,
         reason: 'CORRECTION',
         netAmount: new Decimal('100000.00'),
-        vatAmount: new Decimal('5000.00'),
-        totalAmount: new Decimal('105000.00'),
+        totalAmount: new Decimal('100000.00'),
         accountingDate: new Date('2026-09-17'),
         postingStatus: 'NOT_POSTED',
         createdBy: identity.userId,
@@ -752,7 +618,6 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
       creditNoteId: cnA.id,
       arAccountCode: env.accounts.arCode,
       revenueAccountCode: env.accounts.revCode,
-      vatAccountCode,
     });
 
     const afterA = await prisma.clientInvoice.findUniqueOrThrow({
@@ -761,12 +626,11 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
     });
     expect(new Decimal(afterA.outstandingAmount.toString()).toFixed(2)).toBe('0.00');
 
-    // Post CN-B → rejected: CN total 105,000 > current outstanding 0
+    // Post CN-B → rejected: CN total 100,000 > current outstanding 0
     const err = await service.postCreditNote(identity, {
       creditNoteId: cnB.id,
       arAccountCode: env.accounts.arCode,
       revenueAccountCode: env.accounts.revCode,
-      vatAccountCode,
     }).catch((e) => e);
 
     expect(err).toBeInstanceOf(BadRequestException);
@@ -783,7 +647,7 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
   });
 
   it('CN-DB-21: two CNs against same negative variation — first posts, second rejected by variation cap', async () => {
-    // Negative variation: net = -5,000; cap incl. 5% VAT = 5,250
+    // Negative variation: net = -5,000; cap = 5,000
     const variation = await prisma.variationOrder.create({
       data: {
         organizationId: env.orgId,
@@ -804,9 +668,9 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
       select: { id: true },
     });
 
-    const invoiceId = await makePostedInvoice(); // outstanding 105,000
+    const invoiceId = await makePostedInvoice(); // outstanding 100,000
 
-    // CN-A created via service: net 5,000, total 5,250 → 0 + 5,250 ≤ 5,250 ✓
+    // CN-A created via service: 5,000 → 0 + 5,000 ≤ 5,000 ✓
     const cnA = await service.createCreditNote(identity, {
       invoiceId,
       reason: 'NEGATIVE_VARIATION',
@@ -822,8 +686,7 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
         invoiceId,
         reason: 'NEGATIVE_VARIATION',
         netAmount: new Decimal('5000.00'),
-        vatAmount: new Decimal('250.00'),
-        totalAmount: new Decimal('5250.00'),
+        totalAmount: new Decimal('5000.00'),
         accountingDate: new Date('2026-09-17'),
         postingStatus: 'NOT_POSTED',
         sourceVariationId: variation.id,
@@ -837,17 +700,15 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
       creditNoteId: cnA.id,
       arAccountCode: env.accounts.arCode,
       revenueAccountCode: env.accounts.revCode,
-      vatAccountCode,
     });
 
     // Post CN-B:
-    // - outstanding check passes (105,000 - 5,250 = 99,750; 5,250 ≤ 99,750)
-    // - variation cap check REJECTED (POSTED = 5,250; 5,250 + 5,250 = 10,500 > 5,250)
+    // - outstanding check passes (100,000 - 5,000 = 95,000; 5,000 ≤ 95,000)
+    // - variation cap check REJECTED (POSTED = 5,000; 5,000 + 5,000 = 10,000 > 5,000)
     const err = await service.postCreditNote(identity, {
       creditNoteId: cnB.id,
       arAccountCode: env.accounts.arCode,
       revenueAccountCode: env.accounts.revCode,
-      vatAccountCode,
     }).catch((e) => e);
 
     expect(err).toBeInstanceOf(BadRequestException);
@@ -870,10 +731,9 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
       creditNoteId: cn.id,
       arAccountCode: env.accounts.arCode,
       revenueAccountCode: env.accounts.revCode,
-      vatAccountCode,
     });
     expect((await prisma.clientInvoice.findUniqueOrThrow({ where: { id: invoiceId } })).outstandingAmount.toFixed(2)).toBe(
-      '94500.00',
+      '90000.00',
     );
 
     const reversed = await service.reverseCreditNote(identity, {
@@ -911,14 +771,14 @@ describe('CreditNoteService — DB integration (Slice 6B)', () => {
       service.reverseCreditNote(identity, { creditNoteId: cn.id, reversalDate: '2026-09-20', reason: 'x' }),
     ).rejects.toBeInstanceOf(BadRequestException);
 
-    await service.postCreditNote(identity, { creditNoteId: cn.id, arAccountCode: env.accounts.arCode, revenueAccountCode: env.accounts.revCode, vatAccountCode });
+    await service.postCreditNote(identity, { creditNoteId: cn.id, arAccountCode: env.accounts.arCode, revenueAccountCode: env.accounts.revCode });
     await service.reverseCreditNote(identity, { creditNoteId: cn.id, reversalDate: '2026-09-20', reason: 'Wrong invoice' });
 
     await expect(
       service.reverseCreditNote(identity, { creditNoteId: cn.id, reversalDate: '2026-09-21', reason: 'again' }),
     ).rejects.toBeInstanceOf(BadRequestException);
     await expect(
-      service.postCreditNote(identity, { creditNoteId: cn.id, arAccountCode: env.accounts.arCode, revenueAccountCode: env.accounts.revCode, vatAccountCode }),
+      service.postCreditNote(identity, { creditNoteId: cn.id, arAccountCode: env.accounts.arCode, revenueAccountCode: env.accounts.revCode }),
     ).rejects.toBeInstanceOf(ConflictException);
   });
 });

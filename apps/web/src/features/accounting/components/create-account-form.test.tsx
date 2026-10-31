@@ -8,7 +8,7 @@ import { chooseOption, openSelect } from '@/test/choose-option';
 /**
  * The create-account form (tenant bootstrap, tier 1).
  *
- * Rendering against the real catalogues proves all thirty-two subtype labels plus the six group
+ * Rendering against the real catalogues proves all thirty subtype labels plus the six group
  * headings exist in both locales — that is most of what this screen adds.
  *
  * The behavioural assertions pin the three decisions in `coa-setup.ts`: the normal balance is
@@ -91,14 +91,14 @@ describe('CreateAccountForm', () => {
     expect(screen.getByLabelText('Effective from')).toBeInTheDocument();
   });
 
-  it('offers all thirty-two subtypes, grouped, regardless of the class chosen', async () => {
+  it('offers all thirty subtypes, grouped, regardless of the class chosen', async () => {
     const user = userEvent.setup();
     renderWithProviders(<CreateAccountForm title="New account" onDone={vi.fn()} />);
 
     // The list only exists while the select is open — that is what makes it stylable.
     await openSelect(user, screen.getByLabelText('Account subtype'));
-    // 32 subtypes plus the placeholder.
-    expect(screen.getAllByRole('option')).toHaveLength(33);
+    // 30 subtypes plus the placeholder.
+    expect(screen.getAllByRole('option')).toHaveLength(31);
     expect(screen.getByRole('option', { name: 'Accumulated depreciation' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'Unapplied client receipts' })).toBeInTheDocument();
   });

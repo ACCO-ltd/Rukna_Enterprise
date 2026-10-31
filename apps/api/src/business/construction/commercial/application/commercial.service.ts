@@ -187,7 +187,7 @@ export function invoiceSource(inv: {
  *
  * Document lifecycle first — a cancelled or draft invoice has no settlement story — then posting,
  * then how much of the *total* has been paid. The comparison is against `totalAmount` and nothing
- * else: an invoice is settled when the client has paid what the invoice asked for, VAT included.
+ * else: an invoice is settled when the client has paid what the invoice asked for.
  */
 function invoiceSettlementStatus(
   documentStatus: string,
@@ -873,10 +873,9 @@ export class CommercialService {
    * What has been billed to the client and what has been collected against it.
    *
    * Everything here is on the **invoice-total basis**: settlement is measured against what the
-   * client was actually asked to pay, never against a pre-VAT certified amount or a plan
-   * percentage. Mixing those bases is the specific accounting error this read model exists to
-   * make impossible — `subtotal` and `vatAmount` ride along so a screen showing both can label
-   * which is which, but every ratio and every balance uses `totalAmount`.
+   * client was actually asked to pay, never against a certified amount or a plan percentage.
+   * Mixing those bases is the specific accounting error this read model exists to make
+   * impossible: every ratio and every balance uses `totalAmount`.
    *
    * Only POSTED invoices count toward the position. A draft invoice is a document somebody is
    * still writing; reporting it as "invoiced" would tell a commercial manager they have asked
@@ -1010,7 +1009,6 @@ export class CommercialService {
         creditNoteNumber: cn.creditNoteNumber,
         reason: cn.reason,
         netAmount: cn.netAmount.toString(),
-        vatAmount: cn.vatAmount.toString(),
         totalAmount: cn.totalAmount.toString(),
         accountingDate: cn.accountingDate.toISOString().slice(0, 10),
         postingStatus: cn.postingStatus,
@@ -1026,7 +1024,6 @@ export class CommercialService {
         dueDate: inv.dueDate?.toISOString() ?? null,
         currency: inv.currencyCode,
         subtotal: money(new Decimal(inv.subtotal.toString())),
-        vatAmount: money(new Decimal(inv.vatAmount.toString())),
         totalAmount: money(total),
         paidAmount: money(paid),
         outstandingAmount: money(balance),
@@ -1121,7 +1118,7 @@ export class CommercialService {
    * derived from its **own linked invoice** (ClientInvoice.sourceInstallmentId): un-invoiced →
    * NEXT (the first one, where "Generate invoice" lives) / UPCOMING; invoiced but uncollected →
    * BILLED; posted with partial/full receipts → PARTIALLY_PAID / PAID. Amounts stay on the plan
-   * (ex-VAT) basis: `amount = percentage × baseContractValue`, `amountPaid = amount × collected-fraction`
+   * basis: `amount = percentage × baseContractValue`, `amountPaid = amount × collected-fraction`
    * of the linked invoice, so the header % and the rows stay coherent.
    *
    * ADR-029 CONST-BOQ-032 / T-6 — the milestone schedule derives from the **frozen** `baseContractValue`,

@@ -32,7 +32,6 @@ import { useClients } from '@/features/clients/hooks/use-clients';
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
 import { fromMinorUnits, MONEY_SCALE, parseMinorUnits } from '@/lib/money';
-import { prepareTotals, formatRate } from '@/features/commercial/components/prepare-invoice-dialog.model';
 
 import { defaultDueDate } from '../invoice-actions';
 import { todayWireDate } from '../invoice-overdue';
@@ -40,7 +39,6 @@ import { useIncomeAccounts, useSaveManualInvoice } from '../hooks/use-invoices';
 import { useApprovalSettings } from '../hooks/use-accounting';
 import { useLedgerBlocked } from '@/features/finance/hooks/use-accounting-readiness';
 import type { ClientInvoice } from '../types';
-import { InvoiceTaxField, taxCodeBody, useInvoiceTaxChoice, useInvoiceTaxErrorMessage } from './invoice-tax-field';
 
 const LIST_HREF = '/finance/accounting/invoices';
 const MAX_LINES = 50;
@@ -83,7 +81,7 @@ function termsFromLabel(label: string | null): TermsKey {
 /**
  * ADR-048 — a hand-typed invoice for a sale outside any construction contract (equipment hire,
  * surplus materials, services), laid out like the document: bill-to and dates, the lines (Tab moves
- * across, Enter on the last field adds a line), totals at the chosen tax code. The client's own
+ * across, Enter on the last field adds a line) and the total. The client's own
  * payment terms are the default. Save and issue saves, then opens the invoice on its Issue step
  * (journal preview and confirm); Save draft stops at the draft. A missing client is added in a
  * side sheet without leaving the invoice.
@@ -103,7 +101,6 @@ export function ManualInvoiceForm({
   const clients = useClients();
   const accounts = useIncomeAccounts();
   const save = useSaveManualInvoice(invoice?.id);
-  const taxError = useInvoiceTaxErrorMessage();
   const approvalSettings = useApprovalSettings();
   const ledgerBlocked = useLedgerBlocked();
 
@@ -128,8 +125,6 @@ export function ManualInvoiceForm({
   const [serverProblems, setServerProblems] = useState<string[]>([]);
   const [newClientName, setNewClientName] = useState<string | null>(null);
 
-  const tax = useInvoiceTaxChoice({ enabled: true, invoiceDate });
-
   const termDays = TERMS.find((x) => x.key === terms)?.days;
   const dueDate = termDays === null || termDays === undefined ? customDue : defaultDueDate(invoiceDate, termDays);
 
@@ -146,11 +141,11 @@ export function ManualInvoiceForm({
   const accountOf = (line: LineDraft) => line.revenueAccountCode || defaultAccount;
 
   const subtotalMinor = lines.reduce((sum, l) => sum + (lineMinor(l) ?? 0), 0);
-  const totals = prepareTotals(fromMinorUnits(subtotalMinor, MONEY_SCALE), [], tax.rateFraction);
+  const total = fromMinorUnits(subtotalMinor, MONEY_SCALE);
   // Save and issue only where Issue would be offered on the invoice: a ready ledger, and a total
   // under the amount that needs a second person's approval (ADR-046 §8).
   const approvalAbove = approvalSettings.data?.invoiceApprovalAbove ?? null;
-  const totalMinor = totals.total ? (parseMinorUnits(totals.total, MONEY_SCALE) ?? 0) : 0;
+  const totalMinor = subtotalMinor;
   const canIssueOnSave =
     !ledgerBlocked && (approvalAbove === null || totalMinor < (parseMinorUnits(approvalAbove, MONEY_SCALE) ?? 0));
   const money = (value: string | null) => (value === null ? '—' : (formatMoney(value, currency, 'en') ?? value));
@@ -202,7 +197,7 @@ export function ManualInvoiceForm({
   async function submit(thenIssue: boolean) {
     setAttempted(true);
     setServerProblems([]);
-    if (fieldErrors.length > 0 || tax.blocked) {
+    if (fieldErrors.length > 0) {
       summaryRef.current?.scrollIntoView({ block: 'start' });
       return;
     }
@@ -214,7 +209,6 @@ export function ManualInvoiceForm({
       paymentTerms: t(`terms.${terms}`),
       clientReference: reference.trim(),
       notes: note.trim(),
-      ...taxCodeBody(tax),
       lines: lines.map((l) => ({
         description: l.description.trim(),
         quantity: l.quantity,
@@ -230,7 +224,7 @@ export function ManualInvoiceForm({
       setServerProblems(
         Array.isArray(fromServer)
           ? fromServer.map(String)
-          : [taxError(error) ?? (error instanceof Error && error.message ? error.message : t('saveFailed'))],
+          : [error instanceof Error && error.message ? error.message : t('saveFailed')],
       );
     }
   }
@@ -349,11 +343,11 @@ export function ManualInvoiceForm({
         save={
           <span className="flex gap-2">
             {canIssueOnSave ? (
-              <Button type="submit" name="intent" value="draft" variant="outline" disabled={save.isPending || tax.blocked}>
+              <Button type="submit" name="intent" value="draft" variant="outline" disabled={save.isPending}>
                 {t('saveDraft')}
               </Button>
             ) : null}
-            <Button type="submit" name="intent" value={canIssueOnSave ? 'issue' : 'draft'} disabled={save.isPending || tax.blocked}>
+            <Button type="submit" name="intent" value={canIssueOnSave ? 'issue' : 'draft'} disabled={save.isPending}>
               {save.isPending ? t('saving') : canIssueOnSave ? t('saveAndIssue') : t('saveDraft')}
             </Button>
           </span>
@@ -496,7 +490,6 @@ export function ManualInvoiceForm({
 
           <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
           <div className="w-full space-y-4 lg:max-w-sm">
-            <InvoiceTaxField choice={tax} id="manual-tax" disabled={save.isPending} />
             <FormField htmlFor="manual-note" label={t('note')}>
               <Textarea
                 id="manual-note"
@@ -509,19 +502,9 @@ export function ManualInvoiceForm({
             </FormField>
           </div>
           <dl className="w-full space-y-1.5 text-body-sm lg:max-w-xs">
-            <div className="flex justify-between">
-              <dt className="text-muted-foreground">{t('subtotal')}</dt>
-              <dd className="tabular-nums">{money(totals.subtotal)}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-muted-foreground">
-                {tax.rateFraction !== null ? t('taxAt', { rate: formatRate(tax.rateFraction) }) : t('tax')}
-              </dt>
-              <dd className="tabular-nums">{money(totals.tax)}</dd>
-            </div>
             <div className="flex justify-between border-t border-border pt-2 text-body font-bold">
               <dt>{t('totalDue')}</dt>
-              <dd className="tabular-nums">{money(totals.total)}</dd>
+              <dd className="tabular-nums">{money(total)}</dd>
             </div>
           </dl>
           </div>

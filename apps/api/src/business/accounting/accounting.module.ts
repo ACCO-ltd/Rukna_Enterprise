@@ -9,7 +9,6 @@ import { AccountingSetupModule } from './accounting-setup/accounting-setup.modul
 import { FinanceHomeModule } from './finance-home/finance-home.module.js';
 import { FinanceAttachmentsModule } from './finance-attachments/finance-attachments.module.js';
 import { SetupImportModule } from './setup-import/setup-import.module.js';
-import { VatReportModule } from './vat-report/vat-report.module.js';
 import { BankReconciliationModule } from './bank-reconciliation/bank-reconciliation.module.js';
 import { CloseChecklistModule } from './close-checklist/close-checklist.module.js';
 
@@ -25,7 +24,6 @@ import { CloseChecklistModule } from './close-checklist/close-checklist.module.j
     FinanceHomeModule,
     FinanceAttachmentsModule,
     SetupImportModule,
-    VatReportModule,
     BankReconciliationModule,
     CloseChecklistModule,
   ],

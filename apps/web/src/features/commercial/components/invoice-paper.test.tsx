@@ -58,16 +58,14 @@ describe('DocumentPaper (@erp/ui)', () => {
 });
 
 describe('InvoicePaper — the invoice document on paper', () => {
-  it('draws a draft from the server document: no number yet, Net 30, server tax label, watermark', () => {
+  it('draws a draft from the server document: no number yet, Net 30, watermark', () => {
     renderWithProviders(<InvoicePaper document={makeInvoiceDocument()} />);
     const paper = screen.getByRole('article', { name: 'Invoice preview' });
     expect(within(paper).getByText('INVOICE')).toBeInTheDocument();
     expect(within(paper).getByText('Number assigned on issue')).toBeInTheDocument();
     expect(within(paper).getByText('On issue')).toBeInTheDocument();
     expect(within(paper).getByText('Net 30')).toBeInTheDocument();
-    expect(within(paper).getByText('Sales tax 5%')).toBeInTheDocument();
-    expect(within(paper).getByText('$8,100.00')).toBeInTheDocument();
-    expect(within(paper).getByText('$170,100.00')).toBeInTheDocument();
+    expect(within(paper).getAllByText('$162,000.00').length).toBeGreaterThan(0);
     expect(within(paper).getByText('Olow Tower, Mogadishu')).toBeInTheDocument();
     expect(within(paper).getByText('Tax registration TIN-778')).toBeInTheDocument();
     expect(screen.getByTestId('document-paper-watermark')).toHaveTextContent('Draft');
@@ -96,7 +94,6 @@ describe('InvoicePaper — the invoice document on paper', () => {
           financialsVisible: false,
           lines: [{ description: 'Stage 2', detail: null, amount: null }],
           subtotal: null,
-          taxAmount: null,
           total: null,
           balanceDue: null,
         })}

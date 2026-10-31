@@ -24,12 +24,11 @@ export type InvoiceAdjustmentKind = 'OTHER_DEDUCTIONS' | 'RETENTION' | 'ADVANCE_
 
 export interface InvoiceDocumentModel {
   lines: InvoiceDocumentLine[];
-  /** Taken off before tax: only other deductions on a certificate. */
-  lessBeforeTax: { kind: InvoiceAdjustmentKind; minor: number }[];
+  /** Taken off before the subtotal: only other deductions on a certificate. */
+  lessBeforeSubtotal: { kind: InvoiceAdjustmentKind; minor: number }[];
   subtotalMinor: number;
-  taxMinor: number;
-  /** Held back after tax: retention and advance recovery. */
-  lessAfterTax: { kind: InvoiceAdjustmentKind; minor: number }[];
+  /** Held back after the subtotal: retention and advance recovery. */
+  lessAfterSubtotal: { kind: InvoiceAdjustmentKind; minor: number }[];
   totalMinor: number;
 }
 
@@ -77,10 +76,9 @@ export function invoiceDocumentModel(invoice: ClientInvoice): InvoiceDocumentMod
 
   return {
     lines,
-    lessBeforeTax: gross > 0 && other > 0 ? [{ kind: 'OTHER_DEDUCTIONS', minor: other }] : [],
+    lessBeforeSubtotal: gross > 0 && other > 0 ? [{ kind: 'OTHER_DEDUCTIONS', minor: other }] : [],
     subtotalMinor: lines.reduce((sum, l) => sum + l.amountMinor, 0) - (gross > 0 ? other : 0),
-    taxMinor: minor(invoice.vatAmount),
-    lessAfterTax: [
+    lessAfterSubtotal: [
       ...after('RETENTION', invoice.retentionAmount),
       ...after('ADVANCE_RECOVERY', invoice.advanceRecoveryAmount),
     ],

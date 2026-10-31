@@ -63,9 +63,9 @@ describe('subtype list', () => {
    * subtype absent from the picker is an account nobody can create, and nothing else here
    * would notice.
    */
-  it('covers all 32 schema subtypes with no duplicates', () => {
-    expect(ACCOUNT_SUBTYPES).toHaveLength(32);
-    expect(new Set(ACCOUNT_SUBTYPES).size).toBe(32);
+  it('covers all 30 schema subtypes with no duplicates', () => {
+    expect(ACCOUNT_SUBTYPES).toHaveLength(30);
+    expect(new Set(ACCOUNT_SUBTYPES).size).toBe(30);
   });
 
   /**
@@ -82,13 +82,14 @@ describe('subtype list', () => {
   it('offers every subtype regardless of class, since the server checks no pairing', () => {
     // A single flat list means no class can hide a subtype from the picker.
     expect(ACCOUNT_SUBTYPES).toContain('ACCUMULATED_DEPRECIATION');
-    expect(ACCOUNT_SUBTYPES).toContain('VAT_INPUT_RECOVERABLE');
+    expect(ACCOUNT_SUBTYPES).toContain('PREPAYMENTS');
+    expect(ACCOUNT_SUBTYPES).not.toContain('VAT_INPUT_RECOVERABLE');
   });
 });
 
 describe('control posting policies', () => {
   /**
-   * A6. The schema has three; the DTO's `@IsEnum` accepts two. The seeded bank and VAT
+   * A6. The schema has three; the DTO's `@IsEnum` accepts two. The seeded bank
    * accounts use the third, so they cannot be reproduced through the API. Pinned so that a
    * future reader adding the third value checks the DTO first.
    */

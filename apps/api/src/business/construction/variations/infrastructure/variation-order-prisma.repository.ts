@@ -255,8 +255,8 @@ export class VariationOrderPrismaRepository {
    * BoqNode.sourceChangeOrderId`. `InterimPaymentApplicationItem` carries `boqNodeId` as a scalar (no
    * relation object), so the node's `sourceChangeOrderId` is resolved in a second batched read keyed on
    * the distinct node ids. Org-scoped via the certificate's `organizationId`, contract-scoped via the
-   * application's `contractId`. NO new column, NO write-path touched. `certifiedAmount` is the ex-VAT
-   * line composition; VAT and certificate-level deductions live on headers and never reach this read.
+   * application's `contractId`. NO new column, NO write-path touched. `certifiedAmount` is the
+   * line composition; certificate-level deductions live on headers and never reach this read.
    */
   async findCertifiedInvoicedLines(
     prisma: TenantPrisma,

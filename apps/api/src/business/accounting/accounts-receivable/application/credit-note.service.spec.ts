@@ -16,9 +16,8 @@ const identity: RequestIdentity = {
 const POSTED_INVOICE = {
   id: 'inv-1',
   postingStatus: 'POSTED',
-  outstandingAmount: new Decimal('105000.00'),
+  outstandingAmount: new Decimal('100000.00'),
   subtotal: new Decimal('100000.00'),
-  vatAmount: new Decimal('5000.00'),
   projectId: 'p-1',
   contractId: 'c-1',
   clientId: 'client-1',
@@ -42,7 +41,7 @@ function buildPrisma(overrides: Partial<{
       update: jest.fn().mockResolvedValue(null),
     },
     // $queryRaw used by the SELECT FOR UPDATE lock inside postCreditNote
-    $queryRaw: jest.fn().mockResolvedValue([{ outstanding_amount: '105000.00' }]),
+    $queryRaw: jest.fn().mockResolvedValue([{ outstanding_amount: '100000.00' }]),
   };
 
   const $transaction = overrides.$transaction ?? jest.fn((fn: (tx: unknown) => unknown) => fn(txPrisma));
@@ -69,8 +68,7 @@ function buildPrisma(overrides: Partial<{
           id: 'cn-1',
           postingStatus: 'NOT_POSTED',
           netAmount: new Decimal('10000.00'),
-          vatAmount: new Decimal('500.00'),
-          totalAmount: new Decimal('10500.00'),
+          totalAmount: new Decimal('10000.00'),
           accountingDate: new Date('2026-09-17'),
           invoiceId: 'inv-1',
         },
@@ -95,12 +93,10 @@ function buildService(prismaOverrides?: Parameters<typeof buildPrisma>[0]) {
 
   const mockArAccount = { id: 'acc-ar' };
   const mockRevAccount = { id: 'acc-rev' };
-  const mockVatAccount = { id: 'acc-vat' };
   const resolver = {
     resolveByCodeOrRole: jest.fn()
       .mockResolvedValueOnce(mockArAccount)
-      .mockResolvedValueOnce(mockRevAccount)
-      .mockResolvedValue(mockVatAccount),
+      .mockResolvedValue(mockRevAccount),
   };
 
   const postingPort = {
@@ -133,7 +129,7 @@ describe('createCreditNote', () => {
     expect(createCall.data.postingStatus).toBe('NOT_POSTED');
   });
 
-  it('derives vatAmount from original invoice tax rate (5% example: net 10k → vat 500)', async () => {
+  it('credits the net amount as the total: no tax', async () => {
     const { service, prisma } = buildService();
     await service.createCreditNote(identity, {
       invoiceId: 'inv-1',
@@ -142,8 +138,7 @@ describe('createCreditNote', () => {
       accountingDate: '2026-09-17',
     });
     const createCall = prisma.creditNote.create.mock.calls[0][0];
-    expect(createCall.data.vatAmount.toFixed(2)).toBe('500.00');
-    expect(createCall.data.totalAmount.toFixed(2)).toBe('10500.00');
+    expect(createCall.data.totalAmount.toFixed(2)).toBe('10000.00');
   });
 
   it('throws BadRequestException for a NOT_POSTED invoice', async () => {
@@ -187,7 +182,7 @@ describe('createCreditNote', () => {
   });
 
   it('throws CREDIT_EXCEEDS_OUTSTANDING when new credit + existing credits exceed outstanding', async () => {
-    // outstanding = 105,000; existing credited = 100,000; new CN total = 10,500 → exceeds
+    // outstanding = 105,000; existing credited = 100,000; new CN total = 10,000 → exceeds
     const { service } = buildService({
       invoice: { ...POSTED_INVOICE, outstandingAmount: new Decimal('105000.00') },
       creditNoteAggregate: { _sum: { totalAmount: new Decimal('100000.00') } },
@@ -195,7 +190,7 @@ describe('createCreditNote', () => {
     const err = await service.createCreditNote(identity, {
       invoiceId: 'inv-1',
       reason: 'OMISSION',
-      netAmount: '10000.00', // total = 10,500; 100,000 + 10,500 = 110,500 > 105,000
+      netAmount: '10000.00', // 100,000 + 10,000 = 110,000 > 105,000
       accountingDate: '2026-09-17',
     }).catch((e) => e);
     expect(err).toBeInstanceOf(BadRequestException);
@@ -240,12 +235,12 @@ describe('postCreditNote', () => {
     expect(postCall.entryPurpose).toBe('REVERSAL');
   });
 
-  it('journal has three lines: Dr Revenue, Dr VAT, Cr AR', async () => {
+  it('journal has two lines: Dr Revenue, Cr AR', async () => {
     const { service, postingPort } = buildService();
     await service.postCreditNote(identity, { creditNoteId: 'cn-1' });
     const postCall = postingPort.post.mock.calls[0][0];
     const lines = postCall.lines;
-    expect(lines).toHaveLength(3);
+    expect(lines).toHaveLength(2);
 
     // Revenue debit
     const revLine = lines.find((l: { accountId: string }) => l.accountId === 'acc-rev');
@@ -255,15 +250,10 @@ describe('postCreditNote', () => {
     // untagged debit left project revenue — and the project P&L — overstated.
     expect(revLine.projectId).toBe('p-1');
 
-    // VAT debit
-    const vatLine = lines.find((l: { accountId: string }) => l.accountId === 'acc-vat');
-    expect(vatLine.debitAmount.toFixed(2)).toBe('500.00');
-    expect(new Decimal(vatLine.creditAmount).toFixed(2)).toBe('0.00');
-
     // AR credit
     const arLine = lines.find((l: { accountId: string }) => l.accountId === 'acc-ar');
     expect(new Decimal(arLine.debitAmount).toFixed(2)).toBe('0.00');
-    expect(arLine.creditAmount.toFixed(2)).toBe('10500.00');
+    expect(arLine.creditAmount.toFixed(2)).toBe('10000.00');
   });
 
   it('journal is balanced: sum(debit) === sum(credit)', async () => {

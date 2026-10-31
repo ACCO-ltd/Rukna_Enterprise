@@ -15,7 +15,7 @@ const DTO = {
   billDate: '2026-09-14',
   dueDate: '2026-10-14',
   currencyCode: 'USD',
-  lines: [{ description: 'Office rent', netAmount: 5060, vatAmount: 0, expenseProfileCode: 'OFFICE_EXPENSE' }],
+  lines: [{ description: 'Office rent', netAmount: 5060, expenseProfileCode: 'OFFICE_EXPENSE' }],
 };
 
 function build(

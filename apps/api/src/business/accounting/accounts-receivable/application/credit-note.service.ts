@@ -16,7 +16,6 @@ import {
 import { DocumentSequenceRepository } from '../../accounting-core/infrastructure/document-sequence.repository.js';
 import {
   PostingAccountResolver,
-  type ResolvedAccount,
 } from '../../accounting-core/application/posting-account-resolver.service.js';
 
 type TenantPrisma = Omit<
@@ -29,7 +28,7 @@ type TenantPrisma = Omit<
 export interface CreateCreditNoteDto {
   invoiceId: string;
   reason: 'OMISSION' | 'PRICE_ERROR' | 'CORRECTION' | 'NEGATIVE_VARIATION';
-  /** Decimal string — ex-VAT net to credit */
+  /** Decimal string — the amount to credit */
   netAmount: string;
   /** ISO date string */
   accountingDate: string;
@@ -43,7 +42,6 @@ export interface PostCreditNoteDto {
   invoiceId?: string;
   arAccountCode?: string;
   revenueAccountCode?: string;
-  vatAccountCode?: string;
 }
 
 @Injectable()
@@ -73,7 +71,6 @@ export class CreditNoteService {
       creditNoteNumber: cn.creditNoteNumber,
       reason: cn.reason,
       netAmount: cn.netAmount.toFixed(2),
-      vatAmount: cn.vatAmount.toFixed(2),
       totalAmount: cn.totalAmount.toFixed(2),
       accountingDate: cn.accountingDate.toISOString().slice(0, 10),
       postingStatus: cn.postingStatus,
@@ -98,7 +95,6 @@ export class CreditNoteService {
         postingStatus: true,
         outstandingAmount: true,
         subtotal: true,
-        vatAmount: true,
         projectId: true,
         contractId: true,
       },
@@ -112,16 +108,7 @@ export class CreditNoteService {
     }
 
     const netAmount = new Decimal(dto.netAmount);
-    // Derive the actual VAT rate from the original invoice — never blindly assume 5%.
-    // This ensures a zero-VAT invoice produces a zero-VAT credit note, and an invoice
-    // posted at any other rate produces a proportionally correct credit.
-    const invoiceSubtotal = new Decimal(invoice.subtotal.toString());
-    const invoiceVatAmt = new Decimal(invoice.vatAmount.toString());
-    const vatRate = invoiceSubtotal.isZero()
-      ? new Decimal(0)
-      : invoiceVatAmt.div(invoiceSubtotal).toDecimalPlaces(6);
-    const vatAmount = netAmount.mul(vatRate).toDecimalPlaces(2);
-    const totalAmount = netAmount.plus(vatAmount);
+    const totalAmount = netAmount;
 
     // Phase-1 credit limit: sum of existing NOT_POSTED + POSTED credit notes + new must not exceed outstanding
     const existingCreditTotal = await outerPrisma.creditNote.aggregate({
@@ -181,7 +168,7 @@ export class CreditNoteService {
       const creditedForVariation = new Decimal(
         existingForVariation._sum?.totalAmount?.toString() ?? '0',
       );
-      const absVariationAmount = variationNetPrice.abs().mul(new Decimal(1).plus(vatRate)).toDecimalPlaces(2); // inc. VAT at actual invoice rate
+      const absVariationAmount = variationNetPrice.abs().toDecimalPlaces(2);
       if (creditedForVariation.plus(totalAmount).gt(absVariationAmount)) {
         throw new BadRequestException(
           `Credit notes against variation ${dto.sourceVariationId} would exceed its negative amount.`,
@@ -195,7 +182,6 @@ export class CreditNoteService {
         invoiceId: dto.invoiceId,
         reason: dto.reason as never,
         netAmount,
-        vatAmount,
         totalAmount,
         accountingDate: new Date(dto.accountingDate),
         postingStatus: 'NOT_POSTED',
@@ -260,18 +246,7 @@ export class CreditNoteService {
             invoiceLines.map((l) => ({ key: l.revenueAccountId, weight: new Decimal(l.amount.toString()) })),
           ).map((b) => ({ accountId: b.key, amount: b.amount }));
 
-    const vatAmount = new Decimal(creditNote.vatAmount.toString());
     const totalAmount = new Decimal(creditNote.totalAmount.toString());
-
-    let vatAccount: ResolvedAccount | null = null;
-    if (vatAmount.gt(0)) {
-      vatAccount = await this.resolver.resolveByCodeOrRole(
-        outerPrisma as never,
-        orgId,
-        dto.vatAccountCode,
-        'VAT_OUTPUT_PAYABLE',
-      );
-    }
 
     // Ensure CN sequence exists before entering the transaction
     await this.sequenceRepo.ensureSequence(
@@ -281,20 +256,15 @@ export class CreditNoteService {
       'CN-',
     );
 
-    // Invoice lookup for AR client/contract tags plus immutable tax fields for cap re-check
+    // Invoice lookup for AR client/contract tags
     const invoice = await outerPrisma.clientInvoice.findFirst({
       where: { id: creditNote.invoiceId, organizationId: orgId },
-      select: { clientId: true, contractId: true, projectId: true, taxCodeId: true, currencyCode: true, subtotal: true, vatAmount: true },
+      select: { clientId: true, contractId: true, projectId: true, currencyCode: true },
     });
 
-    // Pre-compute vatRate and variationCap from immutable invoice/variation fields (outside tx)
+    // The variation cap from immutable variation fields (outside tx)
     let variationCap: Decimal | null = null;
     if (creditNote.sourceVariationId) {
-      const invSubtotal = invoice ? new Decimal(invoice.subtotal.toString()) : new Decimal(0);
-      const invVatAmt = invoice ? new Decimal(invoice.vatAmount.toString()) : new Decimal(0);
-      const vatRateForCap = invSubtotal.isZero()
-        ? new Decimal(0)
-        : invVatAmt.div(invSubtotal).toDecimalPlaces(6);
       const variation = await outerPrisma.variationOrder.findFirst({
         where: { id: creditNote.sourceVariationId, organizationId: orgId },
         select: { lines: { select: { amount: true } } },
@@ -304,9 +274,7 @@ export class CreditNoteService {
           (sum, l) => sum.plus(new Decimal(l.amount.toString())),
           new Decimal(0),
         );
-        variationCap = variationNetPrice.abs()
-          .mul(new Decimal(1).plus(vatRateForCap))
-          .toDecimalPlaces(2);
+        variationCap = variationNetPrice.abs().toDecimalPlaces(2);
       }
     }
 
@@ -356,9 +324,9 @@ export class CreditNoteService {
         }
       }
 
-      // EVT-AR-007: Dr Revenue / Dr VAT / Cr AR. Every line carries the invoice's client, project
-      // and contract — the credit takes revenue back from the project the invoice recognised it on
-      // (EVT-AR-001), and Step 6 tags the VAT and AR lines the same way (fix forward).
+      // EVT-AR-007: Dr Revenue / Cr AR. Every line carries the invoice's client, project and
+      // contract — the credit takes revenue back from the project the invoice recognised it on
+      // (EVT-AR-001), and Step 6 tags the AR line the same way (fix forward).
       const tags = {
         clientId: invoice?.clientId ?? undefined,
         projectId: invoice?.projectId ?? undefined,
@@ -367,16 +335,6 @@ export class CreditNoteService {
       const lines: Parameters<typeof this.postingPort.post>[0]['lines'] = revenueSplit
         .filter((r) => r.amount.gt(0))
         .map((r) => ({ accountId: r.accountId, debitAmount: r.amount, creditAmount: new Decimal(0), ...tags }));
-
-      if (vatAccount && vatAmount.gt(0)) {
-        lines.push({
-          accountId: vatAccount.id,
-          debitAmount: vatAmount,
-          creditAmount: new Decimal(0),
-          ...tags,
-          taxCodeId: invoice?.taxCodeId ?? undefined,
-        });
-      }
 
       lines.push({
         accountId: arAccount.id,
@@ -440,7 +398,7 @@ export class CreditNoteService {
 
   /**
    * Phase 0 H2 — EVT-AR-008: reverse a posted credit note issued in error. The mirror of EVT-AR-007
-   * (Dr AR / Cr Revenue / Cr VAT, every original dimension kept), dated on the reversal date; the
+   * (Dr AR / Cr Revenue, every original dimension kept), dated on the reversal date; the
    * invoice's outstanding balance is restored by the credit note total.
    */
   async reverseCreditNote(
@@ -501,7 +459,6 @@ export class CreditNoteService {
             clientId: l.clientId ?? undefined,
             projectId: l.projectId ?? undefined,
             contractId: l.contractId ?? undefined,
-            taxCodeId: l.taxCodeId ?? undefined,
             memo: `Reversal: ${l.description ?? ''}`,
           })),
         },

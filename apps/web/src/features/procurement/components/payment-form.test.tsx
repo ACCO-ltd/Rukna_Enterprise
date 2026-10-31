@@ -91,7 +91,6 @@ function bill(overrides = {}) {
     purchaseOrderRevisionId: null,
     projectId: null,
     subtotal: '2850.00',
-    vatAmount: '0.00',
     totalAmount: '2850.00',
     outstandingAmount: '2850.00',
     ...overrides,

@@ -125,7 +125,6 @@ async function draftPoBackedBill(poId: string, qty: number, price: number) {
         quantity: qty,
         unitPrice: price,
         netAmount: qty * price,
-        vatAmount: 0,
         expenseProfileCode: env.postingProfileCode,
       },
     ],
@@ -347,7 +346,6 @@ test('A08 â€” a genuine non-PO bill is not matched on submit and posts with
       {
         description: 'Ad-hoc consulting',
         netAmount: 1000,
-        vatAmount: 0,
         expenseProfileCode: env.postingProfileCode,
       },
     ],

@@ -24,18 +24,10 @@ import { FormErrorSummary, type FormFieldError } from '@/components/form-error-s
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { useCreateSeparateChargeInvoice } from '@/features/commercial/hooks/use-commercial';
 import { PrepareInvoiceDialog } from '@/features/commercial/components/prepare-invoice-dialog';
-import { prepareTotals } from '@/features/commercial/components/prepare-invoice-dialog.model';
 import { useProjects } from '@/features/projects/hooks/use-projects';
 import { formatMoney } from '@/lib/format';
 
 import { defaultDueDate } from '../invoice-actions';
-import { formatRatePercent } from '../tax-codes';
-import {
-  InvoiceTaxField,
-  taxCodeBody,
-  useInvoiceTaxChoice,
-  useInvoiceTaxErrorMessage,
-} from './invoice-tax-field';
 import { invoiceKeys, useGenerateInvoice } from '../hooks/use-invoices';
 import {
   useInvoiceSources,
@@ -125,9 +117,6 @@ export function InvoiceCreate({
 
   const mayCreate = can(ACCOUNTING_PERMISSIONS.manageReceivables);
   const isMilestone = kind === 'INSTALLMENT';
-  // The milestone path chooses its tax inside the Prepare invoice dialog.
-  const tax = useInvoiceTaxChoice({ enabled: mayCreate && !isMilestone, invoiceDate });
-  const taxError = useInvoiceTaxErrorMessage();
   const financialsVisible = summary.data?.financialsVisible ?? true;
 
   const selected: InvoiceSourceOption | null =
@@ -200,13 +189,10 @@ export function InvoiceCreate({
       return;
     }
 
-    if (tax.blocked) return;
-
     const common = {
       invoiceDate,
       dueDate,
       paymentTerms: paymentTerms.trim() || undefined,
-      ...taxCodeBody(tax),
     };
     try {
       const created =
@@ -219,9 +205,7 @@ export function InvoiceCreate({
       }
       openInvoice(created.id);
     } catch (error) {
-      setSaveError(
-        taxError(error) ?? (error instanceof Error && error.message ? error.message : t('saveFailed')),
-      );
+      setSaveError(error instanceof Error && error.message ? error.message : t('saveFailed'));
     }
   }
 
@@ -268,12 +252,6 @@ export function InvoiceCreate({
 
   const clientName = projectId ? (summary.data?.mainContract?.clientName ?? '') : '';
 
-  // The line's amount at the chosen tax code, in minor units (the milestone path previews its own).
-  const totals =
-    line?.amount && !isMilestone && tax.rateFraction !== null
-      ? prepareTotals(line.amount, [], tax.rateFraction)
-      : null;
-  const money = (value: string) => formatMoney(value, line?.currency ?? null, 'en') ?? value;
 
   return (
     <div className="space-y-6">
@@ -289,7 +267,7 @@ export function InvoiceCreate({
         save={
           <Button
             onClick={() => void handleSave()}
-            disabled={isSaving || (!isMilestone && tax.blocked)}
+            disabled={isSaving}
           >
             {isSaving ? t('saving') : isMilestone ? t('prepareMilestone') : t('saveDraft')}
           </Button>
@@ -445,40 +423,20 @@ export function InvoiceCreate({
         )}
 
         {line ? (
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-            {!isMilestone ? (
-              <div className="w-full lg:max-w-sm">
-                <InvoiceTaxField choice={tax} id="invoice-tax-code" disabled={isSaving} />
-              </div>
-            ) : <span />}
+          <div className="flex justify-end">
             <TotalsBlock
-              className="sm:max-w-sm"
+              className="w-full sm:max-w-sm"
               hidden={!financialsVisible}
               hiddenLabel={t('amountsHidden')}
-              rows={
-                totals && totals.tax !== null && tax.selected
-                  ? [
-                      { label: t('subtotal'), value: <bdi>{money(totals.subtotal)}</bdi> },
-                      {
-                        label: t('taxLine', {
-                          name: tax.selected.name,
-                          rate: formatRatePercent(tax.selected.ratePercent),
-                        }),
-                        value: <bdi>{money(totals.tax)}</bdi>,
-                      },
-                    ]
-                  : []
-              }
-              total={
-                totals && totals.tax !== null
-                  ? { label: t('total'), value: <bdi data-testid="invoice-create-total">{money(totals.total)}</bdi> }
-                  : {
-                      label: t('totalBeforeVat'),
-                      value: (
-                        <bdi>{line.amount ? (formatMoney(line.amount, line.currency, 'en') ?? line.amount) : '—'}</bdi>
-                      ),
-                    }
-              }
+              rows={[]}
+              total={{
+                label: t('total'),
+                value: (
+                  <bdi data-testid="invoice-create-total">
+                    {line.amount ? (formatMoney(line.amount, line.currency, 'en') ?? line.amount) : '—'}
+                  </bdi>
+                ),
+              }}
             />
           </div>
         ) : null}

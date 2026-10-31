@@ -234,7 +234,6 @@ describe('Supplier directory + status', () => {
         dueDate: new Date('2026-09-25'),
         currencyCode: 'USD',
         subtotal: new Decimal(300),
-        vatAmount: new Decimal(0),
         totalAmount: new Decimal(300),
         outstandingAmount: new Decimal(120),
         postingStatus: 'POSTED',

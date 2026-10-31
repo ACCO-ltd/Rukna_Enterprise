@@ -54,7 +54,7 @@ describe('CreditNoteDialog — the only correction once an invoice is issued', (
     const { onOpenChange, onIssued } = renderDialog();
 
     await user.click(screen.getByRole('radio', { name: 'Price error' }));
-    await user.type(screen.getByLabelText('Amount before tax'), '200');
+    await user.type(screen.getByLabelText('Amount'), '200');
     await user.click(screen.getByRole('button', { name: 'Issue credit note' }));
 
     await waitFor(() => expect(onIssued).toHaveBeenCalledWith('CN-0001'));
@@ -75,7 +75,7 @@ describe('CreditNoteDialog — the only correction once an invoice is issued', (
     const { onIssued } = renderDialog();
 
     await user.click(screen.getByRole('radio', { name: 'Correction' }));
-    await user.type(screen.getByLabelText('Amount before tax'), '50');
+    await user.type(screen.getByLabelText('Amount'), '50');
     await user.click(screen.getByRole('button', { name: 'Issue credit note' }));
 
     await user.click(await screen.findByRole('button', { name: 'Post credit note' }));

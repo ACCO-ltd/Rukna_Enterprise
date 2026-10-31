@@ -43,7 +43,6 @@ export interface CreateSupplierBillLineDto {
   quantity?: number;
   unitPrice?: number;
   netAmount: number;
-  vatAmount: number;
   expenseProfileCode: string;
   projectId?: string;
   departmentId?: string;
@@ -224,16 +223,12 @@ export class SupplierBillService {
 
     const lines = dto.lines.map((line, idx) => {
       const net = new Decimal(line.netAmount);
-      const vat = new Decimal(line.vatAmount);
-      const gross = net.plus(vat);
       return {
         lineNumber: idx + 1,
         description: line.description,
         quantity: line.quantity ? new Decimal(line.quantity) : undefined,
         unitPrice: line.unitPrice ? new Decimal(line.unitPrice) : undefined,
         netAmount: net,
-        vatAmount: vat,
-        grossAmount: gross,
         expenseProfileCode: line.expenseProfileCode,
         projectId: line.projectId ?? dto.projectId,
         departmentId: line.departmentId,
@@ -244,9 +239,7 @@ export class SupplierBillService {
     });
 
     const subtotal = lines.reduce((sum, l) => sum.plus(l.netAmount), new Decimal(0));
-    const vatTotal = lines.reduce((sum, l) => sum.plus(l.vatAmount), new Decimal(0));
-    // For NON_RECOVERABLE VAT (ACCO policy): gross posts to expense
-    const totalAmount = lines.reduce((sum, l) => sum.plus(l.grossAmount), new Decimal(0));
+    const totalAmount = subtotal;
 
     let purchaseOrderRevisionId: string | undefined;
     if (dto.purchaseOrderId) {
@@ -260,13 +253,13 @@ export class SupplierBillService {
       purchaseOrderRevisionId = activeRevision.id;
     }
 
-    return { lines, subtotal, vatTotal, totalAmount, purchaseOrderRevisionId };
+    return { lines, subtotal, totalAmount, purchaseOrderRevisionId };
   }
 
   async create(identity: RequestIdentity, dto: CreateSupplierBillDto) {
     const prisma = this.tenancyService.getClient();
     const { activeOrganizationId: orgId, userId } = identity;
-    const { lines, subtotal, vatTotal, totalAmount, purchaseOrderRevisionId } =
+    const { lines, subtotal, totalAmount, purchaseOrderRevisionId } =
       await this.prepareBill(prisma, orgId, dto);
 
     // One supplier invoice number is recorded once per supplier — the unique index on
@@ -293,7 +286,6 @@ export class SupplierBillService {
         projectId: dto.projectId,
         departmentId: dto.departmentId,
         subtotal,
-        vatAmount: vatTotal,
         totalAmount,
         createdBy: userId,
         lines,
@@ -377,7 +369,7 @@ export class SupplierBillService {
       );
     }
 
-    const { lines, subtotal, vatTotal, totalAmount, purchaseOrderRevisionId } =
+    const { lines, subtotal, totalAmount, purchaseOrderRevisionId } =
       await this.prepareBill(prisma, orgId, dto, bill.supplierId);
 
     const existing = await this.repo.findBySupplierInvoiceNumber(
@@ -408,7 +400,6 @@ export class SupplierBillService {
             projectId: dto.projectId ?? null,
             departmentId: dto.departmentId ?? null,
             subtotal,
-            vatAmount: vatTotal,
             totalAmount,
             outstandingAmount: totalAmount,
             matchStatus: 'NOT_RUN',
@@ -553,8 +544,7 @@ export class SupplierBillService {
 
   /**
    * Post SupplierBill to GL.
-   * EVT-AP-001: Dr Expense (grossAmount per line) / Cr Accounts Payable (totalAmount)
-   * ACCO VAT policy: non-recoverable — gross amount (net+VAT) posts to expense.
+   * EVT-AP-001: Dr Expense (netAmount per line) / Cr Accounts Payable (totalAmount)
    */
   async post(identity: RequestIdentity, dto: PostSupplierBillDto) {
     const prisma = this.tenancyService.getClient();
@@ -617,11 +607,11 @@ export class SupplierBillService {
             tx as never, orgId, billLine.expenseProfileCode, bill.billDate, { required: true },
           ))!;
 
-          const gross = new Decimal(billLine.grossAmount.toString());
+          const amount = new Decimal(billLine.netAmount.toString());
           const target = targetByLine.get(billLine.id);
           lines.push({
             accountId: expenseAccountId,
-            debitAmount: gross,
+            debitAmount: amount,
             creditAmount: new Decimal(0),
             // Inherited from the PO line when there is one; the bill's own coding otherwise
             // (a genuine non-PO bill, validated at create by the cost-target policy).
@@ -691,17 +681,12 @@ export class SupplierBillService {
           if (!alreadyPosted) {
             for (const billLine of bill.lines) {
               const target = targetByLine.get(billLine.id);
-              // ACTUAL is the GL expense: gross, because ACCO's input VAT is non-recoverable
-              // and posts into cost (ACC-TAX-001). This is what makes ledger ACTUAL and GL
-              // project cost the same number (REC-01).
-              const lineAmount = new Decimal(billLine.grossAmount.toString());
+              // ACTUAL is the GL expense: the line amount. This is what makes ledger ACTUAL and
+              // GL project cost the same number (REC-01).
+              const lineAmount = new Decimal(billLine.netAmount.toString());
               // The accrual is released at what the goods receipt actually accrued for this
-              // quantity — billedQuantity × poUnitPrice — not at the bill's gross. Releasing
-              // gross against a net accrual left a permanent −VAT residual in ACCRUED, which
-              // surfaced as a NEGATIVE "remaining committed" on any fully-billed project.
-              // Using the accrued basis makes the stage net to exactly zero whatever the
-              // purchase-order price basis turns out to be, so this holds without first
-              // settling whether ACCO's supplier prices include VAT.
+              // quantity — billedQuantity × poUnitPrice — not at the bill's amount, so the stage
+              // nets to exactly zero when the supplier charged a different price.
               const accrualRelease = target?.accruedBasis ?? lineAmount;
               if (lineAmount.isZero() && accrualRelease.isZero()) continue;
 

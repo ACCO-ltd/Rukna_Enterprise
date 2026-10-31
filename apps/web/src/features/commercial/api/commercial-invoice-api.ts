@@ -26,7 +26,7 @@ export function getInvoiceDocument(
   return apiClient<CommercialInvoiceDocumentResponse>(`${base(projectId)}/invoices/${invoiceId}`);
 }
 
-/** What preparing this stage would invoice: stage amount, eligible variations, server tax rate, blocker. */
+/** What preparing this stage would invoice: stage amount, eligible variations, blocker. */
 export function getPreparePreview(
   projectId: string,
   installmentId: string,
@@ -73,7 +73,7 @@ export type CreditNoteReason = 'OMISSION' | 'PRICE_ERROR' | 'CORRECTION';
 
 export interface CreateInvoiceCreditNotePayload {
   reason: CreditNoteReason;
-  /** Decimal string, before tax — the server applies the invoice's own tax rate. */
+  /** Decimal string. */
   netAmount: string;
   /** yyyy-MM-dd. */
   accountingDate: string;
@@ -85,7 +85,6 @@ export interface InvoiceCreditNote {
   creditNoteNumber: string | null;
   reason: CreditNoteReason | 'NEGATIVE_VARIATION';
   netAmount: string;
-  vatAmount: string;
   totalAmount: string;
   accountingDate: string;
   postingStatus: 'NOT_POSTED' | 'PENDING' | 'POSTED' | 'FAILED' | 'REVERSED';

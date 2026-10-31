@@ -181,6 +181,11 @@ function monthlyPL(overrides: Partial<MonthlyPL> = {}): MonthlyPL {
         grossProfit: '40000.00',
         expenses: '15000.00',
         netIncome: '25000.00',
+        lines: [
+          { accountId: 'acc-rev', accountCode: '42600', accountName: 'Project Revenue', accountClass: 'INCOME', accountSubtype: 'PROJECT_REVENUE', amount: '100000.00' },
+          { accountId: 'acc-cos', accountCode: '51000', accountName: 'Materials', accountClass: 'COST_OF_SALES', accountSubtype: 'MATERIAL_COST', amount: '60000.00' },
+          { accountId: 'acc-exp', accountCode: '61000', accountName: 'Office', accountClass: 'EXPENSE', accountSubtype: 'ADMINISTRATIVE_EXPENSE', amount: '15000.00' },
+        ],
       },
       {
         periodNumber: 2,
@@ -190,6 +195,11 @@ function monthlyPL(overrides: Partial<MonthlyPL> = {}): MonthlyPL {
         grossProfit: '30000.00',
         expenses: '35000.00',
         netIncome: '-5000.00',
+        lines: [
+          { accountId: 'acc-rev', accountCode: '42600', accountName: 'Project Revenue', accountClass: 'INCOME', accountSubtype: 'PROJECT_REVENUE', amount: '80000.00' },
+          { accountId: 'acc-cos', accountCode: '51000', accountName: 'Materials', accountClass: 'COST_OF_SALES', accountSubtype: 'MATERIAL_COST', amount: '50000.00' },
+          { accountId: 'acc-exp', accountCode: '61000', accountName: 'Office', accountClass: 'EXPENSE', accountSubtype: 'ADMINISTRATIVE_EXPENSE', amount: '35000.00' },
+        ],
       },
     ],
     ...overrides,
@@ -211,20 +221,14 @@ beforeEach(() => {
 });
 
 describe('BalanceSheetReport', () => {
-  it('shows the three sections and the equation total', async () => {
+  it('shows the three sections, their accounts and the equation total', async () => {
     renderWithProviders(<BalanceSheetReport />);
 
-    expect(await screen.findByText('Assets')).toBeInTheDocument();
-    expect(screen.getByText('Liabilities')).toBeInTheDocument();
-    expect(screen.getByText('Equity')).toBeInTheDocument();
-    expect(screen.getByText('Liabilities and Equity')).toBeInTheDocument();
-  });
-
-  it('confirms the sheet balances', async () => {
-    renderWithProviders(<BalanceSheetReport />);
-    expect(
-      await screen.findByText('Assets equal liabilities plus equity'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('Salaam Bank')).toBeInTheDocument();
+    expect(screen.getByText('Accounts Payable')).toBeInTheDocument();
+    expect(screen.getByText('Retained Earnings')).toBeInTheDocument();
+    expect(screen.getByText('Total assets')).toBeInTheDocument();
+    expect(screen.getByText('Total liabilities and equity')).toBeInTheDocument();
   });
 
   /**
@@ -239,28 +243,39 @@ describe('BalanceSheetReport', () => {
     renderWithProviders(<BalanceSheetReport />);
 
     expect(await screen.findByText(/cannot fail on its own/)).toBeInTheDocument();
-    expect(screen.getByText('The sheet does not balance')).toBeInTheDocument();
   });
 
-  /** Equity carries a figure that is on no account; a reader reconciling it needs to know. */
-  it('explains why equity includes current year earnings', async () => {
+  it('names earnings not yet closed as their own equity lines', async () => {
+    vi.mocked(getBalanceSheet).mockResolvedValue(
+      balanceSheet({
+        equity: {
+          label: 'Equity',
+          total: '100000.00',
+          lines: [
+            { accountId: 'PRIOR_YEAR_EARNINGS', accountCode: 'RE', accountName: 'x', accountSubtype: 'RETAINED_EARNINGS', balance: '60000.00' },
+            { accountId: 'CURRENT_YEAR_EARNINGS', accountCode: 'CYE', accountName: 'x', accountSubtype: 'CURRENT_YEAR_EARNINGS', balance: '40000.00' },
+          ],
+        },
+      }),
+    );
+
     renderWithProviders(<BalanceSheetReport />);
 
-    expect(await screen.findByText(/current year’s earnings/)).toBeInTheDocument();
+    expect(await screen.findByText('Earlier years not yet closed')).toBeInTheDocument();
+    expect(screen.getByText('Net income this year')).toBeInTheDocument();
   });
 
-  it('requests a comparative column when a second date is given', async () => {
+  it('asks for a comparison column at the previous year end', async () => {
     const user = userEvent.setup();
     renderWithProviders(<BalanceSheetReport />);
 
-    await screen.findByText('Assets');
-    await pickDate(user, screen.getByLabelText('Compare with'), '2025-12-31');
+    await screen.findByText('Salaam Bank');
+    await user.click(screen.getByRole('button', { name: 'Previous year end' }));
 
     expect(vi.mocked(getBalanceSheet)).toHaveBeenLastCalledWith(
-      expect.objectContaining({ comparativeDate: '2025-12-31' }),
+      expect.objectContaining({ comparativeDate: expect.stringMatching(/-12-31$/) }),
     );
   });
-
 });
 
 describe('AccountLedgerReport', () => {
@@ -345,22 +360,23 @@ describe('AccountLedgerReport', () => {
 });
 
 describe('MonthlyComparisonReport', () => {
-  it('shows one row per period with a year-to-date total', async () => {
+  it('lists each account by month with a total for the year', async () => {
     renderWithProviders(<MonthlyComparisonReport />);
 
     expect(await screen.findByText('January 2026')).toBeInTheDocument();
     expect(screen.getByText('February 2026')).toBeInTheDocument();
-    expect(screen.getByText('Year to date')).toBeInTheDocument();
+    expect(screen.getByText('Total')).toBeInTheDocument();
+    expect(screen.getByText('Project Revenue')).toBeInTheDocument();
   });
 
-  /** Year-to-date is not on the response — it is summed here, in minor units. */
-  it('totals the columns across the year', async () => {
+  /** The year column is not on the response — it is summed here, in minor units. */
+  it('totals each account across the year', async () => {
     renderWithProviders(<MonthlyComparisonReport />);
 
     await screen.findByText('January 2026');
     // Revenue 100,000 + 80,000; net income 25,000 − 5,000.
-    expect(screen.getByText('180,000.00')).toBeInTheDocument();
-    expect(screen.getByText('20,000.00')).toBeInTheDocument();
+    expect(screen.getAllByText('$180,000.00').length).toBeGreaterThan(0);
+    expect(screen.getByText('$20,000.00')).toBeInTheDocument();
   });
 
   it('selects the only fiscal year rather than opening on an empty picker', async () => {
@@ -368,18 +384,6 @@ describe('MonthlyComparisonReport', () => {
 
     expect(await screen.findByText('January 2026')).toBeInTheDocument();
     expect(vi.mocked(getMonthlyPL)).toHaveBeenCalledWith('fy-1');
-  });
-
-  /**
-   * The endpoint answers 200 with a null body for an unknown fiscal year rather than 404
-   * (`pl-report.service.ts:180`), so a null has to be read as "not found" here.
-   */
-  it('treats a null body as a missing fiscal year, not an empty report', async () => {
-    vi.mocked(getMonthlyPL).mockResolvedValue(null);
-
-    renderWithProviders(<MonthlyComparisonReport />);
-
-    expect(await screen.findByText('That fiscal year no longer exists.')).toBeInTheDocument();
   });
 
   it('says when no fiscal year exists at all', async () => {
@@ -394,24 +398,13 @@ describe('MonthlyComparisonReport', () => {
     vi.mocked(getMonthlyPL).mockResolvedValue(
       monthlyPL({
         columns: [
-          {
-            periodNumber: 1,
-            periodName: 'January 2026',
-            revenue: '0.00',
-            costOfSales: '0.00',
-            grossProfit: '0.00',
-            expenses: '0.00',
-            netIncome: '0.00',
-          },
+          { periodNumber: 1, periodName: 'January 2026', revenue: '0.00', costOfSales: '0.00', grossProfit: '0.00', expenses: '0.00', netIncome: '0.00', lines: [] },
         ],
       }),
     );
 
     renderWithProviders(<MonthlyComparisonReport />);
 
-    expect(
-      await screen.findByText('Nothing was posted in any period of this year.'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('Nothing was posted in any period of this year.')).toBeInTheDocument();
   });
-
 });

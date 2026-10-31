@@ -282,7 +282,7 @@ describe('ChartOfAccounts', () => {
       accountCount: 0,
       hasFiscalYear: false,
       hasPolicies: true,
-      existingRecords: ['TAX_CODES', 'BANK_ACCOUNTS'],
+      existingRecords: ['POSTING_PROFILES', 'BANK_ACCOUNTS'],
     });
     renderWithProviders(<ChartOfAccounts />, {
       permissions: ['view:accounting', 'manage:accounting'],
@@ -290,7 +290,7 @@ describe('ChartOfAccounts', () => {
 
     expect(
       await screen.findByText(
-        'Accounting can’t be set up automatically: this organisation already has tax codes and bank accounts but no chart of accounts. Remove them or add the chart manually.',
+        'Accounting can’t be set up automatically: this organisation already has posting profiles and bank accounts but no chart of accounts. Remove them or add the chart manually.',
       ),
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Set up accounting' })).not.toBeInTheDocument();

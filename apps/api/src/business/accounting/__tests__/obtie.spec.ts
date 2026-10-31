@@ -102,7 +102,7 @@ test('OBTIE-01 payables credited to another account than AP control → refused 
     openApBills: [
       {
         supplierId: env.supplierId, supplierInvoiceNumber: 'QB-TIE-1', billDate: day(env), dueDate: day(env),
-        currencyCode: 'USD', subtotal: 2000, vatAmount: 0, totalAmount: 2000, expenseProfileCode: env.postingProfileCode,
+        currencyCode: 'USD', subtotal: 2000, totalAmount: 2000, expenseProfileCode: env.postingProfileCode,
       },
     ],
   });
@@ -117,7 +117,7 @@ test('OBTIE-02 no opening-balance journal → refused (409)', async () => {
       organizationId: env.orgId, supplierId: env.supplierId,
       supplierInvoiceNumber: 'QB-NOJ-1', supplierInvoiceNumberNorm: 'QBNOJ1',
       billDate: env.periods.openStart, dueDate: env.periods.openEnd, currencyCode: 'USD',
-      subtotal: new Decimal(700), vatAmount: new Decimal(0), totalAmount: new Decimal(700), outstandingAmount: new Decimal(700),
+      subtotal: new Decimal(700), totalAmount: new Decimal(700), outstandingAmount: new Decimal(700),
       documentStatus: 'APPROVED', postingStatus: 'OPENING_BALANCE', createdBy: env.identity.userId,
     },
   });

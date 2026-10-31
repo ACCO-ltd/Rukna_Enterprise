@@ -12,7 +12,6 @@ import { Decimal } from '@prisma/client/runtime/library';
  */
 export interface BillRuleLine {
   netAmount: number;
-  vatAmount: number;
 }
 
 export interface BillRuleInput {
@@ -40,7 +39,7 @@ export function billProblem(bill: BillRuleInput): BillRuleProblem | null {
   if (day(bill.dueDate) < day(bill.billDate)) {
     return { errorCode: 'DUE_BEFORE_BILL_DATE', message: 'The due date cannot be before the bill date.' };
   }
-  const total = bill.lines.reduce((sum, l) => sum.plus(l.netAmount).plus(l.vatAmount), new Decimal(0));
+  const total = bill.lines.reduce((sum, l) => sum.plus(l.netAmount), new Decimal(0));
   if (total.lte(0)) {
     return { errorCode: 'BILL_TOTAL_NOT_POSITIVE', message: 'The bill total must be more than 0.' };
   }

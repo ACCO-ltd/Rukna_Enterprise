@@ -9,7 +9,7 @@ describe('photo reader answer (Step 7)', () => {
   it('reads JSON wrapped in prose and fences, keeping only known fields', () => {
     const r = parseReaderAnswer('Here you go:\n```json\n{"supplierName":"Horn Cement","date":"2026-10-05","currency":"usd","total":"1,050.00","taxAmount":50,"extra":"x",' +
       '"lines":[{"description":"Cement 50kg","quantity":"20","unit":"bag","unitPrice":"50","amount":"1000"}]}\n```');
-    expect(r).toMatchObject({ supplierName: 'Horn Cement', date: '2026-10-05', currency: 'USD', total: '1050.00', taxAmount: '50', warnings: [] });
+    expect(r).toMatchObject({ supplierName: 'Horn Cement', date: '2026-10-05', currency: 'USD', total: '1050.00', warnings: [] });
     expect(r.lines).toEqual([{ description: 'Cement 50kg', quantity: '20', unit: 'bag', unitPrice: '50', amount: '1000' }]);
     expect(r).not.toHaveProperty('extra');
   });

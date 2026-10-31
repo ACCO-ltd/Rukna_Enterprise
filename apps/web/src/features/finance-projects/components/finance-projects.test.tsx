@@ -125,7 +125,7 @@ describe('FinanceProjectsList', () => {
     for (const gone of ['Collected', 'Cost', 'Margin']) {
       expect(within(table()).queryByRole('columnheader', { name: new RegExp(`^${gone}`) })).toBeNull();
     }
-    // Billed share of the contract, before tax: 160,000 of 500,000.
+    // Billed share of the contract: 160,000 of 500,000.
     expect(within(table()).getAllByText('32%').length).toBeGreaterThan(0);
     expect(within(table()).getAllByText('1 stage not prepared').length).toBeGreaterThan(0);
     expect(within(table()).getAllByText('1 draft prepared').length).toBeGreaterThan(0);
@@ -146,7 +146,7 @@ describe('FinanceProjectsList', () => {
     const group = await screen.findByRole('group', { name: 'Portfolio totals by currency' });
     expect(within(group).getByLabelText('Portfolio totals in SOS')).toBeInTheDocument();
     expect(within(group).getByLabelText('Portfolio totals in USD')).toBeInTheDocument();
-    expect(within(group).getAllByText('Billed (excl. tax)')).toHaveLength(2);
+    expect(within(group).getAllByText('Billed')).toHaveLength(2);
     expect(within(group).getByText('5 projects have no contract yet.')).toBeInTheDocument();
     expect(within(group).queryByText(/No currency/)).toBeNull();
   });

@@ -25,7 +25,7 @@ describe('ReadPhotoButton (Step 7)', () => {
     mocks.ready = true;
     vi.mocked(documentReaderApi.read).mockResolvedValue({
       readingId: 'r1', kind: 'RECEIPT', supplierName: 'Horn Cement', documentNumber: 'R-9', date: '2026-10-05', currency: 'USD',
-      total: '105.00', taxAmount: '5.00', lines: [], warnings: ['The total does not equal the sum of the lines.'],
+      total: '105.00', lines: [], warnings: ['The total does not equal the sum of the lines.'],
     });
     const onRead = vi.fn();
     renderWithProviders(<ReadPhotoButton fileId="f1" kind="RECEIPT" onRead={onRead} />);

@@ -35,7 +35,6 @@ beforeAll(async () => {
   refunds = new ClientRefundService({ getClient: () => prisma } as never, svc.sequenceRepo, new PostingAccountResolver(new AccountRepository()), svc.postingService as never);
   for (const [code, name, accountClass, subtype] of [
     ['42100', 'Equipment hire income', 'INCOME', 'OTHER_INCOME'],
-    ['22000', 'Sales tax payable', 'LIABILITY', 'VAT_OUTPUT_PAYABLE'],
   ] as const) {
     const a = await prisma.account.create({ data: { id: `${env.orgId}-${code}`, organizationId: env.orgId, code, normalBalance: 'CREDIT', createdBy: env.identity.userId } });
     await prisma.accountVersion.create({
@@ -45,7 +44,7 @@ beforeAll(async () => {
   day = env.periods.openStart.toISOString().slice(0, 10);
   const inv = await svc.clientInvoiceService.createManual(env.identity, {
     clientId: env.clientId, invoiceDate: day, dueDate: day, currencyCode: 'USD', paymentTerms: 'Due on receipt',
-    lines: [{ description: 'Crane hire', quantity: '1', unitPrice: '1000.00', revenueAccountCode: '42100' }],
+    lines: [{ description: 'Crane hire', quantity: '1', unitPrice: '1050.00', revenueAccountCode: '42100' }],
   });
   await svc.clientInvoiceService.issue(env.identity, inv.id); // 1050
   // Paid 3,000: 1,050 applied, 1,950 on account.

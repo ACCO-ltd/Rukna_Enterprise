@@ -32,7 +32,6 @@ export interface DocumentReadResult {
   date: string | null;
   currency: string | null;
   total: string | null;
-  taxAmount: string | null;
   lines: ReadLine[];
   /** Things a person should look at: "The total does not equal the sum of the lines". */
   warnings: string[];

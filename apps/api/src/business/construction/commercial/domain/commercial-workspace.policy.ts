@@ -305,15 +305,6 @@ export function invoiceDocumentCapabilities(
   };
 }
 
-/** "Sales tax 5%" from the invoice's own amounts (the rate it was actually raised at); null when untaxed. */
-export function taxLabelFor(subtotal: Decimal, tax: Decimal, ratePercent?: Decimal | null): string | null {
-  if (subtotal.isZero() || tax.isZero()) return null;
-  // ADR-041 — the rate the invoice was raised at; derived from the amounts only for an invoice
-  // without one (tax is rounded to cents, so a derived rate can be a hair off: 33.33 → 1.67 = 5.01%).
-  const pct = ratePercent && !ratePercent.isZero() ? ratePercent : tax.div(subtotal).mul(100).toDecimalPlaces(2);
-  return `Sales tax ${pct.toString()}%`;
-}
-
 // ─── Client statement ────────────────────────────────────────────────────────────
 
 export interface StatementEntry {

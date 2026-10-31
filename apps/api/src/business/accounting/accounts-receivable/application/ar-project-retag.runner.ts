@@ -179,14 +179,14 @@ export async function revenueByProject(prisma: Tx, orgId: string): Promise<Map<s
 
 /**
  * The Finance "Billing and general ledger" check for one project: what was billed (posted
- * invoice subtotals less posted credit notes, excluding tax) minus the revenue posted. 0 = clears.
+ * invoice subtotals less posted credit notes) minus the revenue posted. 0 = clears.
  */
 export async function billingGap(prisma: Tx, orgId: string, projectId: string): Promise<Decimal> {
   const [row] = await prisma.$queryRawUnsafe<{ billed: string }[]>(
     `SELECT (
        COALESCE((SELECT SUM(subtotal) FROM client_invoices
                  WHERE organization_id = $1 AND project_id = $2 AND posting_status = 'POSTED'), 0)
-       - COALESCE((SELECT SUM(cn.total_amount - cn.vat_amount) FROM credit_notes cn
+       - COALESCE((SELECT SUM(cn.total_amount) FROM credit_notes cn
                    JOIN client_invoices ci ON ci.id = cn.invoice_id
                    WHERE cn.organization_id = $1 AND cn.posting_status = 'POSTED' AND ci.project_id = $2), 0)
      )::text AS billed`,
