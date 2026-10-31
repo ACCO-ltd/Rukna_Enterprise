@@ -102,7 +102,6 @@ async function makeInvoice(
       dueDate: over.dueDate === undefined ? new Date('2026-09-01T00:00:00Z') : over.dueDate,
       currencyCode: 'USD',
       subtotal: '12500.00',
-      vatAmount: '0.00',
       totalAmount: '12500.00',
       outstandingAmount: over.outstandingAmount ?? '4500.00',
       billingAddressSnapshot: over.openingBalance

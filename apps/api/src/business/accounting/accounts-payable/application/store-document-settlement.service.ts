@@ -214,7 +214,6 @@ export class StoreDocumentSettlementService {
         purchaseOrderRevisionId: revision.id,
         projectId: request?.projectId ?? undefined,
         subtotal: total,
-        vatAmount: ZERO,
         totalAmount: total,
         createdBy: identity.userId,
         lines: split.map((s, i) => {
@@ -225,8 +224,6 @@ export class StoreDocumentSettlementService {
             quantity: s.quantity,
             unitPrice: s.unitPrice,
             netAmount: s.amount,
-            vatAmount: ZERO,
-            grossAmount: s.amount,
             expenseProfileCode: profileCode,
             lineType: line.lineType as 'MATERIAL' | 'SERVICE' | 'OTHER',
             materialId: uniqueMaterial(line) ? line.materialId! : undefined,

@@ -66,7 +66,6 @@
 20000,Accounts Payable,,Liabilities,Keep,20000,Accounts Payable,,LIABILITY,ACCOUNTS_PAYABLE,Control account — supplier bills post here automatically.,
 ,,,Liabilities,New,21000,Advances received from clients,,LIABILITY,CLIENT_ADVANCE_LIABILITY,Required by Rukna: client advance (mobilisation) payments.,
 ,,,Liabilities,New,21100,Unapplied client receipts,,LIABILITY,UNAPPLIED_CLIENT_RECEIPTS,Required by Rukna: client money received before it is matched to an invoice.,
-,,,Liabilities,New,21300,Output VAT payable,,LIABILITY,VAT_OUTPUT_PAYABLE,"Required by Rukna: sales tax on client invoices. (The generic template uses 22000, which ACCO already uses for salaries payable.)",
 22000,SALARY PAYBLE,,Liabilities,Rename,22000,Salaries payable,,LIABILITY,OTHER_CURRENT_LIABILITY,,
 23000,Zako Payble,,Liabilities,Rename,23000,Zako payable,,LIABILITY,OTHER_CURRENT_LIABILITY,"Finance: is ""Zako"" zakat? Name to confirm.",
 25000,MHH PAYBLE ( Parents ),,Liabilities,Rename,25000,MHH payable (parents),,LIABILITY,OTHER_CURRENT_LIABILITY,Related-party balance — kept as it is. Finance: confirm it is a liability and current (due within a year).,

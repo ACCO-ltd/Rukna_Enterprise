@@ -10,10 +10,6 @@ export class AccountingConfigurationRepository {
     return prisma.fiscalCalendarPolicy.findUnique({ where: { organizationId } });
   }
 
-  getTaxPolicy(prisma: TenantPrisma, organizationId: string) {
-    return prisma.taxPolicy.findUnique({ where: { organizationId } });
-  }
-
   getNumberingPolicy(prisma: TenantPrisma, organizationId: string) {
     return prisma.numberingPolicy.findUnique({ where: { organizationId } });
   }
@@ -41,22 +37,6 @@ export class AccountingConfigurationRepository {
     },
   ) {
     return prisma.fiscalCalendarPolicy.upsert({
-      where: { organizationId },
-      create: { organizationId, ...data },
-      update: data,
-    });
-  }
-
-  upsertTaxPolicy(
-    prisma: TenantPrisma,
-    organizationId: string,
-    data: {
-      defaultOutputTaxCodeId?: string | null;
-      defaultInputTaxCodeId?: string | null;
-      updatedBy: string;
-    },
-  ) {
-    return prisma.taxPolicy.upsert({
       where: { organizationId },
       create: { organizationId, ...data },
       update: data,

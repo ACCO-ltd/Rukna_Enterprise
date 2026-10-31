@@ -43,7 +43,6 @@ export interface CreatePoLineDto {
   orderedQuantity: number;
   unitPrice: number;
   spendCategoryId?: string;
-  taxCodeId?: string;
   // Cost-target (A3/D7): both set for a project-cost-relevant line, both omitted for org lines.
   projectId?: string;
   boqNodeId?: string;
@@ -764,7 +763,6 @@ export class PurchaseOrderService {
           unitPrice: price,
           extendedAmount: qty.mul(price),
           spendCategoryId: line.spendCategoryId,
-          taxCodeId: line.taxCodeId,
           projectId: line.projectId,
           boqNodeId: line.boqNodeId,
           notes: line.notes,

@@ -21,9 +21,6 @@ import { CommercialBillingService } from '../application/commercial-billing.serv
 import { CommercialService } from '../application/commercial.service.js';
 import { CommercialWorkspaceService } from '../application/commercial-workspace.service.js';
 import { linkVerifiedMilestones } from './verified-milestones.fixture.js';
-import { TaxCodeService } from '../../../accounting/accounting-core/application/tax-code.service.js';
-import { TaxCodeRepository } from '../../../accounting/accounting-core/infrastructure/tax-code.repository.js';
-import { cleanupSalesTax, seedDefaultSalesTax } from '../../../accounting/__tests__/helpers/sales-tax.fixture.js';
 
 /**
  * Commercial redesign D1 (2026-09-28) — prepare → issue → delete, live DB.
@@ -101,7 +98,6 @@ describe('Commercial redesign D1 — prepare / issue / delete (DB)', () => {
       postingPort as never,
       {} as unknown as InvoiceDocumentService,
       {} as unknown as PlatformFileService,
-      new TaxCodeService(tenancy, new TaxCodeRepository()),
     );
     const variationRepo = new VariationOrderPrismaRepository();
     const variationService = new VariationOrderService(tenancy, variationRepo, projectAccess, auditOutbox);
@@ -127,7 +123,7 @@ describe('Commercial redesign D1 — prepare / issue / delete (DB)', () => {
     const files = {
       getDownloadUrl: async () => ({ url: 'https://signed.example/logo.png' }),
     } as unknown as PlatformFileService;
-    workspace = new CommercialWorkspaceService(tenancy, projectAccess, repo, variationRepo, commercial, files, new TaxCodeService(tenancy, new TaxCodeRepository()));
+    workspace = new CommercialWorkspaceService(tenancy, projectAccess, repo, variationRepo, commercial, files);
 
     identity = {
       userId: 'u1',
@@ -168,7 +164,6 @@ describe('Commercial redesign D1 — prepare / issue / delete (DB)', () => {
     await prisma.organization.create({
       data: { id: orgId, name: `Prep Org ${suffix}`, slug: `prep-${suffix}`, status: 'ACTIVE' },
     });
-    await seedDefaultSalesTax(prisma, orgId);
     const project = await prisma.project.create({
       data: { organizationId: orgId, code: `PREP-${suffix.slice(-6)}`, name: 'Prepare project', currency: 'USD', createdBy: 'u1' },
     });
@@ -230,7 +225,6 @@ describe('Commercial redesign D1 — prepare / issue / delete (DB)', () => {
     await prisma.boqVersion.deleteMany({ where: { boq: { organizationId: orgId } } });
     await prisma.boq.deleteMany({ where: { organizationId: orgId } });
     await prisma.project.deleteMany({ where: { organizationId: orgId } });
-    await cleanupSalesTax(prisma, orgId);
     await prisma.organization.deleteMany({ where: { id: orgId } });
     await prisma.$disconnect();
   });
@@ -354,7 +348,7 @@ describe('Commercial redesign D1 — prepare / issue / delete (DB)', () => {
       { description: 'VO-OMIT — VO-OMIT title', detail: 'Omission', amount: '-5000.00' },
     ]);
     expect(doc.subtotal).toBe('195000.00');
-    expect(doc.taxLabel).toBe('Sales tax 5%');
+    expect(doc.total).toBe('195000.00');
     expect(doc.paymentTermsDays).toBe(30);
     expect(doc.capabilities).toMatchObject({ canIssue: false, canSend: true, canRecordPayment: true });
   });

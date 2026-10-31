@@ -1,6 +1,7 @@
 # ADR-041 — Client invoice tax from configured tax codes
 
-**Status:** Accepted (owner: Abdulsalam, with ACCO management direction, 2026-10-01).
+**Status:** Superseded by ADR-050 (2026-10-31): VAT and tax codes are removed from the platform.
+Originally accepted (owner: Abdulsalam, with ACCO management direction, 2026-10-01).
 Supersedes the fixed rate in `client-invoice-tax.ts` (`CLIENT_INVOICE_SALES_TAX_RATE = '0.05'`).
 Builds on ADR-006 (ACC-TAX-001, `TaxCode`, `TaxPolicy`) and corrects ADR-040.
 

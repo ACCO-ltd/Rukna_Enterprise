@@ -30,10 +30,8 @@ Each entry carries:
 | `Fixture` | A concrete numeric example QA can use verbatim in integration tests. All amounts in USD. |
 
 **Amount notation:**
-- `NET` = subtotal before VAT
-- `VAT` = 5% × NET
-- `GROSS` = NET + VAT (total on document)
-- ACCO input VAT is NON_RECOVERABLE — supplier expense/inventory posts GROSS; no separate VAT debit line.
+- No document carries VAT (ADR-050): a document's total is its net amount, less any deductions.
+- A supplier bill line posts its `netAmount` to expense or inventory.
 
 **Enum values used in this catalog (must match schema exactly):**
 
@@ -71,17 +69,17 @@ Pre-conditions:
   PostingRuleVersion for CLIENT_INVOICE.POSTED v1 is ACTIVE for accountingDate
   PostingProfile PROJECT_REVENUE v1 resolves accountId for accountingDate
   Lines balance: totalAmount (DR) + retentionAmount (DR) + advanceRecoveryAmount (DR)
-                 = subtotal (CR) + vatAmount (CR)
+                 = subtotal (CR)
 
 IPC invoices (ADR-046 §5): the certificate is cumulative to date; the invoice bills the period —
 certificate to date minus what earlier IPC invoices on the contract billed (credit notes netted).
-  subtotal              = period gross − period other deductions   (revenue, tax base)
+  subtotal              = period gross − period other deductions   (revenue)
   retentionAmount       = period retention
   advanceRecoveryAmount = period advance recovery
-  totalAmount           = subtotal + vatAmount − retentionAmount − advanceRecoveryAmount (amount due)
-Every other invoice carries zero retention and advance recovery, so totalAmount = subtotal + vat.
+  totalAmount           = subtotal − retentionAmount − advanceRecoveryAmount (amount due)
+Every other invoice carries zero retention and advance recovery, so totalAmount = subtotal.
 
-Retention release invoice (ADR-046 §5): subtotal = vatAmount = 0, retentionReleasedAmount =
+Retention release invoice (ADR-046 §5): subtotal = 0, retentionReleasedAmount =
 totalAmount. Lines: Dr Accounts Receivable totalAmount / Cr Retention Receivable
 retentionReleasedAmount (no revenue line).
 ```
@@ -97,8 +95,6 @@ Dr  Advances received from clients  advanceRecoveryAmount  ACCOUNT_SUBTYPE: CLIE
                                          dim: clientId, projectId, contractId
 Cr  Project Revenue        subtotal      POSTING_PROFILE: PROJECT_REVENUE → accountId @ accountingDate
                                          dim: projectId, departmentId
-Cr  Output VAT Payable     vatAmount     TAX_CODE: VAT_5_OUTPUT → outputTaxAccountId
-                                         dim: taxCodeId
 
 journalCategory  = ACCOUNTS_RECEIVABLE
 entryPurpose     = NORMAL
@@ -111,15 +107,13 @@ NUMERIC FIXTURE — "INV-004282, Contract ACME-01, December 2026"
 
   Input:
     subtotal    = 240,000.00 USD
-    vatAmount   =  12,000.00 USD   (5% × 240,000)
-    totalAmount = 252,000.00 USD
+    totalAmount = 240,000.00 USD
 
   Generated journal (journalNumber = SJ-000001):
-    Dr  11000 Accounts Receivable   252,000.00
+    Dr  11000 Accounts Receivable   240,000.00
     Cr  42600 Project Income        240,000.00
-    Cr  [VAT Payable account]        12,000.00
     ─────────────────────────────────────────
-    ∑ Dr = ∑ Cr = 252,000.00  ✓
+    ∑ Dr = ∑ Cr = 240,000.00  ✓
 
   DocumentNumberSequence consumed: nextNumber 4282 → 4283
   ClientInvoice.invoiceNumber assigned: "INV-004282"
@@ -140,13 +134,13 @@ SUBLEDGER AFTER POST
   ClientInvoice.invoiceNumber        = "INV-004282"
   ClientInvoice.postedJournalEntryId = <JournalEntry.id>
   ClientInvoice.postedAt             = <timestamp>
-  ClientInvoice.outstandingAmount    = 252,000.00 (no allocations yet)
+  ClientInvoice.outstandingAmount    = 240,000.00 (no allocations yet)
 
 GL IMPACT
-  Trial Balance  → AR debit +252k; Revenue credit +240k; VAT Payable credit +12k
-  Balance Sheet  → AR (ASSET) +252k; VAT Payable (LIABILITY) +12k
+  Trial Balance  → AR debit +240k; Revenue credit +240k
+  Balance Sheet  → AR (ASSET) +240k
   Profit & Loss  → Revenue +240k for the period
-  AR Control     → glBalance +252k = subledgerBalance +252k; variance = 0
+  AR Control     → glBalance +240k = subledgerBalance +240k; variance = 0
 ```
 
 ---
@@ -171,9 +165,8 @@ Pre-conditions:
 ```
 JOURNAL LINES  (exact mirror of EVT-AR-001)
 
-Cr  Accounts Receivable   252,000.00   (same account as original)
+Cr  Accounts Receivable   240,000.00   (same account as original)
 Dr  Project Revenue        240,000.00
-Dr  Output VAT Payable      12,000.00
 
 journalCategory             = ACCOUNTS_RECEIVABLE
 entryPurpose                = REVERSAL
@@ -184,10 +177,9 @@ reversalOfJournalEntryId    = <original JournalEntry.id>
 NUMERIC FIXTURE — reversing INV-004282
 
   Dr  42600 Project Income        240,000.00
-  Dr  [VAT Payable account]        12,000.00
-  Cr  11000 Accounts Receivable   252,000.00
+  Cr  11000 Accounts Receivable   240,000.00
   ──────────────────────────────────────────
-  ∑ Dr = ∑ Cr = 252,000.00  ✓
+  ∑ Dr = ∑ Cr = 240,000.00  ✓
 
 SUBLEDGER AFTER REVERSAL
   ClientInvoice.postingStatus          = REVERSED
@@ -474,7 +466,6 @@ JOURNAL LINES  (exact mirror of EVT-AR-007, every dimension kept)
 
 Dr  Accounts Receivable   (credit note total)
 Cr  Project Revenue       (net)
-Cr  Output VAT Payable    (VAT, if any)
 
 journalCategory = ACCOUNTS_RECEIVABLE · entryPurpose = REVERSAL
 idempotency     = (org, CREDIT_NOTE, creditNote.id, EVT-AR-008)
@@ -501,25 +492,20 @@ Pre-conditions:
   AccountingPeriod for accountingDate is OPEN or REOPENED
   PostingProfile active for each SupplierBillLine.expenseProfileCode at accountingDate
   CostCenter.departmentId = JournalLine.departmentId for each dimensioned line
-  ∑ SupplierBillLine.grossAmount = SupplierBill.totalAmount
-
-ACCO VAT NOTE
-  Input VAT is NON_RECOVERABLE (ACC-TAX-001). grossAmount = netAmount + vatAmount posts to expense.
-  vatAmount is retained on SupplierBillLine for audit and VAT-return reporting only.
-  No separate VAT debit line is generated.
+  ∑ SupplierBillLine.netAmount = SupplierBill.totalAmount
 ```
 
 ```
 JOURNAL LINES  (one debit per SupplierBillLine, one AP credit)
 
 For each SupplierBillLine[i]:
-  Dr  Expense/Inventory[i]   grossAmount[i]   POSTING_PROFILE: expenseProfileCode → accountId @ date
+  Dr  Expense/Inventory[i]   netAmount[i]     POSTING_PROFILE: expenseProfileCode → accountId @ date
                                                dim: projectId, departmentId, costCenterId
 
 Cr  Accounts Payable         totalAmount      ACCOUNT_SUBTYPE: ACCOUNTS_PAYABLE
                                                dim: supplierId
 
-Invariant: ∑ debit gross amounts = Cr totalAmount
+Invariant: ∑ debit line amounts = Cr totalAmount
 
 journalCategory = ACCOUNTS_PAYABLE
 entryPurpose    = NORMAL
@@ -531,11 +517,11 @@ postingOrigin   = SYSTEM_AP
 NUMERIC FIXTURE — "PJ-000001, cement delivery, 2 lines"
 
   Input:
-    Line 1: description="Cement bags", net=8,000.00, vat=400.00, gross=8,400.00
+    Line 1: description="Cement bags", net=8,400.00
              expenseProfileCode = MATERIAL_PURCHASE → account 50303 Cement Cost
              project = PROJ-001, dept = CONST, costCenter = SITE-A
 
-    Line 2: description="Transport", net=1,000.00, vat=50.00, gross=1,050.00
+    Line 2: description="Transport", net=1,050.00
              expenseProfileCode = OFFICE_EXPENSE → account 60100 Transport Expense
              dept = CONST
 
@@ -1061,9 +1047,8 @@ NUMERIC FIXTURE — ACCO go-live opening balance (illustrative subset)
   Dr  17000 Prepaid Expenses           5,500.00
 
   Cr  20000 Accounts Payable         125,000.00   (= 2 open bills: 75k + 50k)
-  Cr  20200 VAT Payable               14,500.00
   Cr  30000 ASAS Group Capital       500,000.00
-  Cr  31000 Retained Earnings        583,000.00
+  Cr  31000 Retained Earnings        597,500.00
   ────────────────────────────────────────────
   ∑ Dr = ∑ Cr = 1,222,500.00  ✓
 
@@ -1175,7 +1160,7 @@ POST-EFFECTS
 | PAYMENT_RECEIPT.REVERSED | 1 | v1.2: mirror both branches | Sprint 4 |
 | CLIENT_RECEIPT_ALLOCATED | 1 | New in v1.2: post-payment allocation of unallocated receipt amount | Sprint 4 |
 | CLIENT_RECEIPT_ALLOCATED.REVERSED | 1 | New in v1.2 | Sprint 4 |
-| SUPPLIER_BILL.POSTED | 1 | Initial definition (NON_RECOVERABLE VAT) | Sprint 4 |
+| SUPPLIER_BILL.POSTED | 1 | Initial definition (net line amounts; no VAT since ADR-050) | Sprint 4 |
 | SUPPLIER_BILL.REVERSED | 1 | Initial definition | Sprint 4 |
 | SUPPLIER_PAYMENT.POSTED | 1 | v1.2: branch A (full) + branch B (partial with Supplier Advance) | Sprint 4 |
 | SUPPLIER_PAYMENT.REVERSED | 1 | v1.2: mirror both branches | Sprint 4 |

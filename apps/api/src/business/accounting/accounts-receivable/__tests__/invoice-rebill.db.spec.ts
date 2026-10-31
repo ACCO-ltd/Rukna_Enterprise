@@ -39,24 +39,6 @@ beforeAll(async () => {
       data: { email: `rb-${env.orgId}@rb.test`, passwordHash: 'x', firstName: 'Rebill', lastName: 'Test', organizationId: env.orgId },
     })
   ).id;
-  // The fixture org charges 5% sales tax.
-  const vat = await prisma.account.create({
-    data: { id: `${env.orgId}-22000`, organizationId: env.orgId, code: '22000', normalBalance: 'CREDIT', createdBy: env.identity.userId },
-  });
-  await prisma.accountVersion.create({
-    data: {
-      accountId: vat.id,
-      versionNumber: 1,
-      name: 'Sales tax payable',
-      accountClass: 'LIABILITY',
-      accountSubtype: 'VAT_OUTPUT_PAYABLE',
-      isPostingAllowed: true,
-      isControlAccount: false,
-      controlPostingPolicy: 'UNRESTRICTED',
-      effectiveFrom: new Date('2020-01-01'),
-      changedBy: env.identity.userId,
-    },
-  });
   contractId = (await prisma.contract.findFirstOrThrow({ where: { organizationId: env.orgId } })).id;
   const ipa = await prisma.interimPaymentApplication.create({
     data: { organizationId: env.orgId, contractId, applicationNumber: 1, status: 'SUBMITTED', createdBy: env.identity.userId },

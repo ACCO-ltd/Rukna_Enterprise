@@ -43,7 +43,6 @@ beforeAll(async () => {
   svc = buildServices(prisma);
   writeOffs = new WriteOffService({ getClient: () => prisma } as never, svc.sequenceRepo, new PostingAccountResolver(new AccountRepository()), svc.postingService as never);
   await account('42100', 'Equipment hire income', 'INCOME', 'OTHER_INCOME');
-  await account('22000', 'Sales tax payable', 'LIABILITY', 'VAT_OUTPUT_PAYABLE');
   day = env.periods.openStart.toISOString().slice(0, 10);
   const inv = await svc.clientInvoiceService.createManual(env.identity, {
     clientId: env.clientId, invoiceDate: day, dueDate: day, currencyCode: 'USD', paymentTerms: 'Due on receipt',

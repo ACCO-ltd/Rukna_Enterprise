@@ -42,7 +42,6 @@ describe('CollectionEventsService — DB integration (Slice 6B)', () => {
         invoiceDate: new Date('2026-09-01'),
         dueDate: DUE_DATE,
         subtotal: new Decimal('100000.00'),
-        vatAmount: new Decimal('5000.00'),
         totalAmount: new Decimal('105000.00'),
         outstandingAmount: new Decimal('105000.00'),
         currencyCode: 'USD',

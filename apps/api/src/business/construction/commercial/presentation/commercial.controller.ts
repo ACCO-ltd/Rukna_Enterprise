@@ -91,7 +91,7 @@ export class CommercialController {
 
   @Get('installments/:installmentId/prepare-preview')
   @RequirePermissions(PERMISSIONS.contractsView, PERMISSIONS.receivablesManage)
-  @ApiOperation({ summary: 'Prepare-invoice dialog preview: stage amount, variations, server tax rate' })
+  @ApiOperation({ summary: 'Prepare-invoice dialog preview: stage amount and variations' })
   @ApiParam({ name: 'projectId', description: 'Project ID' })
   @ApiParam({ name: 'installmentId', description: 'Payment installment ID' })
   @ApiResponse({ status: 400, description: 'STAGE_ALREADY_INVOICED' })
@@ -502,7 +502,6 @@ export class CommercialController {
       creditNoteId,
       arAccountCode: dto.arAccountCode,
       revenueAccountCode: dto.revenueAccountCode,
-      vatAccountCode: dto.vatAccountCode,
     });
   }
 

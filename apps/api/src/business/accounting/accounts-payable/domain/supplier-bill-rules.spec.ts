@@ -4,7 +4,7 @@ const bill = (over: Partial<Parameters<typeof billProblem>[0]> = {}) => ({
   currencyCode: 'USD',
   billDate: '2026-10-01',
   dueDate: '2026-10-31',
-  lines: [{ netAmount: 100, vatAmount: 0 }],
+  lines: [{ netAmount: 100 }],
   ...over,
 });
 
@@ -16,11 +16,11 @@ describe('supplier bill rules (SB-1)', () => {
   it('names each mistake', () => {
     expect(billProblem(bill({ currencyCode: 'EUR' }))?.errorCode).toBe('CURRENCY_NOT_SUPPORTED');
     expect(billProblem(bill({ dueDate: '2026-09-30' }))?.errorCode).toBe('DUE_BEFORE_BILL_DATE');
-    expect(billProblem(bill({ lines: [{ netAmount: 0, vatAmount: 0 }] }))?.errorCode).toBe('BILL_TOTAL_NOT_POSITIVE');
+    expect(billProblem(bill({ lines: [{ netAmount: 0 }] }))?.errorCode).toBe('BILL_TOTAL_NOT_POSITIVE');
   });
 
   it('a line amount typed over quantity × price is kept, as the supplier charged it', () => {
-    expect(billProblem(bill({ lines: [{ quantity: 2, unitPrice: 10, netAmount: 25, vatAmount: 0 } as never] }))).toBeNull();
+    expect(billProblem(bill({ lines: [{ quantity: 2, unitPrice: 10, netAmount: 25 } as never] }))).toBeNull();
   });
 
   it('a due date on the bill date is fine', () => {

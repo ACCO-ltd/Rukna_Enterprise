@@ -28,7 +28,6 @@ beforeAll(async () => {
   home = new FinanceHomeService({ getClient: () => prisma } as never, new FinanceHomeRepository());
   for (const [code, name, accountClass, subtype] of [
     ['42100', 'Equipment hire income', 'INCOME', 'OTHER_INCOME'],
-    ['22000', 'Sales tax payable', 'LIABILITY', 'VAT_OUTPUT_PAYABLE'],
   ] as const) {
     const a = await prisma.account.create({ data: { id: `${env.orgId}-${code}`, organizationId: env.orgId, code, normalBalance: 'CREDIT', createdBy: env.identity.userId } });
     await prisma.accountVersion.create({
@@ -99,7 +98,7 @@ it('FH-04: the payables aging includes opening bills; each side has its own perm
     data: {
       organizationId: env.orgId, supplierId: env.supplierId, supplierInvoiceNumber: 'OPEN-1', supplierInvoiceNumberNorm: 'OPEN1',
       billDate: new Date('2026-01-01'), dueDate: new Date('2026-01-31'), currencyCode: 'USD',
-      subtotal: 500, vatAmount: 0, totalAmount: 500, outstandingAmount: 500,
+      subtotal: 500, totalAmount: 500, outstandingAmount: 500,
       documentStatus: 'APPROVED', postingStatus: 'OPENING_BALANCE', createdBy: env.identity.userId,
     },
   });

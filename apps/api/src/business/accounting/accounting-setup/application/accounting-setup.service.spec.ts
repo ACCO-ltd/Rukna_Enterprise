@@ -12,7 +12,6 @@ const identity = { activeOrganizationId: 'org1', userId: 'u1', permissions: ['*'
 
 const INPUT: InstallSetupInput = {
   templateId: 'CONSTRUCTION',
-  vat: { charged: true, ratePercent: 5 },
   banks: [
     { accountName: 'Salaam operating', bankName: 'Salaam Somali Bank', accountNumber: '001' },
     { accountName: 'Dahabshiil', bankName: 'Dahabshiil Bank' },
@@ -44,9 +43,6 @@ function build(opts: { accountsBefore?: number; accountsInTx?: number; failAt?: 
       fail('profiles');
       return (a[2] as unknown[]).length;
     }),
-    createTaxCodes: jest.fn(async (...a: Args) => (a[2] as unknown[]).length),
-    findDefaultOutputTax: jest.fn(async (..._a: Args): Promise<unknown> => null),
-    linkOutputTaxAccount: jest.fn(async (..._a: Args) => undefined),
     createFiscalYear: jest.fn(async (..._a: Args) => ({ id: 'fy1', name: 'FY2026' })),
     createBankAccounts: jest.fn(async (...a: Args) => (a[2] as unknown[]).length),
     ensureDocumentSequences: jest.fn(async (..._a: Args) => fail('sequences')),
@@ -59,22 +55,13 @@ function build(opts: { accountsBefore?: number; accountsInTx?: number; failAt?: 
 }
 
 describe('AccountingSetupService.install', () => {
-  it('keeps tax Finance already configured: no codes created, sales codes linked to Output VAT', async () => {
-    const { service, repo } = build();
-    repo.findDefaultOutputTax.mockResolvedValue({ id: 't1', code: 'VAT5_OUT', name: 'Sales tax 5%', rate: 5 });
-    const result = await service.install(identity, INPUT);
-    expect(repo.createTaxCodes).not.toHaveBeenCalled();
-    expect(result.taxCodesCreated).toBe(0);
-    expect(repo.linkOutputTaxAccount.mock.calls[0]![2]).toBe('id-22000');
-  });
-
   it('installs everything inside ONE transaction, parent-first, and reports what it created', async () => {
     const { service, repo, prisma, tx } = build();
     const result = await service.install(identity, INPUT);
 
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
     // Every write received the transaction client, never the outer client.
-    for (const fn of ['lockOrganization', 'upsertPolicies', 'createAccounts', 'createPostingProfiles', 'createTaxCodes', 'createFiscalYear', 'createBankAccounts', 'ensureDocumentSequences', 'recordAudit'] as const) {
+    for (const fn of ['lockOrganization', 'upsertPolicies', 'createAccounts', 'createPostingProfiles', 'createFiscalYear', 'createBankAccounts', 'ensureDocumentSequences', 'recordAudit'] as const) {
       expect(repo[fn].mock.calls[0]![0]).toBe(tx);
     }
 
@@ -86,15 +73,14 @@ describe('AccountingSetupService.install', () => {
     }
     expect(accounts.find((a) => a.code === '10100')?.name).toBe('Salaam operating');
     expect(accounts.find((a) => a.code === '10101')?.name).toBe('Dahabshiil');
-    // ACC-TAX-001 / ADR-041: input VAT is non-recoverable — no input-VAT asset, VAT or not.
+    // ADR-050: no VAT accounts.
     expect(seen.has('14100')).toBe(false);
+    expect(seen.has('22000')).toBe(false);
 
     // Versions effective from the fiscal year start.
     expect((repo.createAccounts.mock.calls[0]![3] as Date).toISOString().slice(0, 10)).toBe('2026-01-01');
     // Policy start month follows the chosen fiscal year.
     expect(repo.upsertPolicies).toHaveBeenCalledWith(tx, 'org1', 1, 'u1');
-    // Tax codes linked to output VAT 22000.
-    expect(repo.createTaxCodes.mock.calls[0]![3]).toEqual({ outputTaxAccountId: 'id-22000' });
     // Retained earnings 31000 is the FY's closing account.
     expect(repo.createFiscalYear.mock.calls[0]![3]).toBe('id-31000');
 
@@ -109,7 +95,6 @@ describe('AccountingSetupService.install', () => {
       postingProfilesCreated: (repo.createPostingProfiles.mock.calls[0]![2] as unknown[]).length,
       fiscalYear: { id: 'fy1', name: 'FY2026' },
       bankAccountsCreated: 2,
-      taxCodesCreated: 2,
     });
     expect(repo.recordAudit).toHaveBeenCalledTimes(1);
   });
@@ -147,12 +132,12 @@ describe('AccountingSetupService.install', () => {
     expect(repo.recordAudit).not.toHaveBeenCalled();
   });
 
-  it('L6: records without a chart (e.g. tax codes) → 409 ACCOUNTING_PARTIALLY_SET_UP listing them, no writes', async () => {
+  it('L6: records without a chart (e.g. bank accounts) → 409 ACCOUNTING_PARTIALLY_SET_UP listing them, no writes', async () => {
     const { service, repo, prisma } = build();
-    repo.findExistingRecords.mockResolvedValueOnce(['TAX_CODES', 'BANK_ACCOUNTS']);
+    repo.findExistingRecords.mockResolvedValueOnce(['POSTING_PROFILES', 'BANK_ACCOUNTS']);
     await expect(service.install(identity, INPUT)).rejects.toMatchObject({
       status: 409,
-      response: { errorCode: 'ACCOUNTING_PARTIALLY_SET_UP', details: { existingRecords: ['TAX_CODES', 'BANK_ACCOUNTS'] } },
+      response: { errorCode: 'ACCOUNTING_PARTIALLY_SET_UP', details: { existingRecords: ['POSTING_PROFILES', 'BANK_ACCOUNTS'] } },
     });
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
@@ -163,19 +148,6 @@ describe('AccountingSetupService.install', () => {
     await service.install(identity, { ...INPUT, fiscalYear: { year: new Date().getUTCFullYear() + 1, startMonth: 1 } });
     expect((repo.createAccounts.mock.calls[0]![3] as Date).toISOString().slice(0, 10)).toBe(today);
     expect((repo.createPostingProfiles.mock.calls[0]![4] as Date).toISOString().slice(0, 10)).toBe(today);
-  });
-
-  it('no VAT: a 0% "No sales tax" default (ADR-041), no 14100 — output VAT 22000 still exists', async () => {
-    const { service, repo } = build();
-    const result = await service.install(identity, { ...INPUT, vat: { charged: false } });
-    // Without a default sales tax code no client invoice could be raised.
-    expect((repo.createTaxCodes.mock.calls[0]![2] as Array<{ code: string; rate: number; direction: string }>)).toEqual([
-      expect.objectContaining({ code: 'EXEMPT', rate: 0, direction: 'OUTPUT' }),
-    ]);
-    expect(result.taxCodesCreated).toBe(1);
-    const codes = (repo.createAccounts.mock.calls[0]![2] as Array<{ code: string }>).map((a) => a.code);
-    expect(codes).not.toContain('14100');
-    expect(codes).toContain('22000');
   });
 
   it('no banks: only petty cash, no BankAccount rows', async () => {
@@ -197,8 +169,6 @@ describe('AccountingSetupService.install', () => {
   });
 
   it.each([
-    ['VAT charged without a rate', { ...INPUT, vat: { charged: true } }],
-    ['VAT rate over 100', { ...INPUT, vat: { charged: true, ratePercent: 101 } }],
     ['a duplicate bank account number', { ...INPUT, banks: [INPUT.banks[0]!, { ...INPUT.banks[0]!, accountName: 'Other' }] }],
     ['a blank bank name', { ...INPUT, banks: [{ accountName: 'A', bankName: '  ' }] }],
     ['21 banks', { ...INPUT, banks: Array.from({ length: 21 }, (_, i) => ({ accountName: `B${i}`, bankName: 'X' })) }],
@@ -217,7 +187,6 @@ describe('AccountingSetupService.getStatus / getTemplate', () => {
     repo.getStatusFacts.mockResolvedValueOnce({ accountCount: 0, existingRecords: [], hasFiscalYear: false, hasPolicies: false });
     await expect(service.getStatus(identity)).resolves.toEqual({
       canInstall: true, reason: 'READY', existingRecords: [], accountCount: 0, hasFiscalYear: false, hasPolicies: false,
-      defaultSalesTax: null,
     });
     repo.getStatusFacts.mockResolvedValueOnce({ accountCount: 0, existingRecords: ['POSTING_PROFILES'], hasFiscalYear: false, hasPolicies: true });
     await expect(service.getStatus(identity)).resolves.toMatchObject({
@@ -227,9 +196,9 @@ describe('AccountingSetupService.getStatus / getTemplate', () => {
     await expect(service.getStatus(identity)).resolves.toMatchObject({ canInstall: false, reason: 'CHART_NOT_EMPTY', accountCount: 4 });
   });
 
-  it('previews bank placeholders and the VAT row per the query', () => {
+  it('previews bank placeholders per the query', () => {
     const { service } = build();
-    const t = service.getTemplate({ vatRate: 5, banks: 2 });
+    const t = service.getTemplate({ banks: 2 });
     expect(t.templateId).toBe('CONSTRUCTION');
     expect(t.accounts.filter((a) => a.conditional === 'BANK').map((a) => [a.code, a.name])).toEqual([
       ['10100', 'Bank 1'],
@@ -243,6 +212,5 @@ describe('AccountingSetupService.getStatus / getTemplate', () => {
 
     const none = service.getTemplate({});
     expect(none.accounts.some((a) => a.conditional)).toBe(false);
-    expect(service.getTemplate({ vatRate: 0 }).accounts.some((a) => a.code === '14100')).toBe(false);
   });
 });

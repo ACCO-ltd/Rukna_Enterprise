@@ -61,16 +61,10 @@ export interface InvoiceDocumentInput {
   currencyCode: string;
   /** Decimal strings. */
   subtotal: string;
-  vatAmount: string;
   totalAmount: string;
   /**
-   * ADR-041 — the rate (percent) the invoice was raised at, for the "Sales Tax 5%" label. Derived
-   * from the amounts only when absent: tax is rounded to cents, so a derived rate can read 5.0105%.
-   */
-  taxRatePercent?: string | null;
-  /**
    * ADR-046 §5 — what an IPC invoice holds back this period (decimal strings; absent or "0" on other
-   * invoices). Shown as "Less" rows between the tax and Total Due, which is the amount due net of them.
+   * invoices). Shown as "Less" rows between the subtotal and Total Due, which is the amount due net of them.
    */
   retentionAmount?: string;
   advanceRecoveryAmount?: string;
@@ -173,7 +167,6 @@ export function buildInvoiceViewModel(input: InvoiceDocumentInput): InvoiceViewM
     lines,
     totals: [
       { label: 'Subtotal', value: money(input.subtotal) },
-      { label: salesTaxLabel(input), value: money(input.vatAmount) },
       ...holdBackRows(input, money),
     ],
     total: { label: 'Total Due', value: money(input.totalAmount) },
@@ -194,28 +187,6 @@ export function buildInvoiceViewModel(input: InvoiceDocumentInput): InvoiceViewM
 function projectColumn(project: NonNullable<InvoiceDocumentInput['project']>): NonNullable<InvoiceViewModel['project']> {
   const where = [project.name?.trim(), project.location?.trim()].filter((part): part is string => Boolean(part));
   return { label: 'Project', name: project.code, lines: where.length > 0 ? [where.join(', ')] : [] };
-}
-
-/** "Sales Tax (5%)" from the invoice's own rate (ADR-041), else derived from the amounts. */
-export function salesTaxLabel(input: Pick<InvoiceDocumentInput, 'taxRatePercent' | 'subtotal' | 'vatAmount'>): string {
-  const rate =
-    input.taxRatePercent !== null && input.taxRatePercent !== undefined && input.taxRatePercent !== ''
-      ? trimRate(Number(input.taxRatePercent))
-      : derivedRate(input.subtotal, input.vatAmount);
-  return rate !== null ? `Sales Tax (${rate}%)` : 'Sales Tax';
-}
-
-function trimRate(rate: number): string | null {
-  if (!Number.isFinite(rate)) return null;
-  return String(Number(rate.toFixed(2)));
-}
-
-function derivedRate(subtotal: string, vatAmount: string): string | null {
-  const base = Number(subtotal);
-  const tax = Number(vatAmount);
-  if (!Number.isFinite(base) || base <= 0 || !Number.isFinite(tax)) return null;
-  const pct = (tax / base) * 100;
-  return Number.isInteger(pct) ? String(pct) : pct.toFixed(1);
 }
 
 /**

@@ -406,7 +406,7 @@ Database Tables
 | AccountingCore | ✅ Complete | Chart of Accounts (account versions, control accounts), FiscalYear + AccountingPeriod (OPEN/LOCKED/CLOSED), double-entry posting engine (`AccountingPostingService`), `DocumentSequenceRepository`, `JournalRepository`, `AccountRepository` |
 | ManualJournals | ✅ Complete | DRAFT → SUBMITTED → APPROVED → POSTED → REVERSED lifecycle, CFO four-eyes rule |
 | AccountsReceivable | ✅ Complete | `ClientInvoiceService` (from IPC), `CustomerReceiptService` (post + allocate), reversal chain (EVT-AR-001/003/005/006) |
-| AccountsPayable | ✅ Complete | `SupplierBillService` (create/submit/approve/post/reverse), `SupplierPaymentService` (post/advance allocation/reverse), NON_RECOVERABLE VAT (EVT-AP-001/003/005/006) |
+| AccountsPayable | ✅ Complete | `SupplierBillService` (create/submit/approve/post/reverse), `SupplierPaymentService` (post/advance allocation/reverse), no VAT (ADR-050; EVT-AP-001/003/005/006) |
 | GeneralLedger | ✅ Complete | `LedgerService` (running balance), `TrialBalanceService`, `PLReportService`, `BalanceSheetService`, `PeriodManagementService` (lock/close/reopen/snapshot/year-end) |
 | OpeningBalance | ✅ Complete | Migration wizard — trial balance import, open AR invoices, open AP bills |
 

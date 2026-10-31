@@ -177,7 +177,6 @@ async function postBill(poId: string, qty: number, price: number, vat: number) {
         quantity: qty,
         unitPrice: price,
         netAmount: qty * price,
-        vatAmount: vat,
         expenseProfileCode: env.postingProfileCode,
       },
     ],

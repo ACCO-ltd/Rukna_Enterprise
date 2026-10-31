@@ -20,7 +20,7 @@ export class UpdateOrganizationBrandingDto {
   @IsOptional()
   legalAddress?: string | null;
 
-  @ApiPropertyOptional({ description: 'Tax / VAT registration number.' })
+  @ApiPropertyOptional({ description: 'Tax identification number (TIN).' })
   @IsString()
   @MaxLength(100)
   @IsOptional()

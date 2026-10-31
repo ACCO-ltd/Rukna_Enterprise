@@ -16,7 +16,6 @@ export interface CreatePoLineData {
   unitPrice: Decimal;
   extendedAmount: Decimal;
   spendCategoryId?: string;
-  taxCodeId?: string;
   // Cost-target (A3/D7): both set for a project-cost-relevant line, both undefined for org lines.
   projectId?: string;
   boqNodeId?: string;

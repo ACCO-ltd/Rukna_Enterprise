@@ -1202,8 +1202,7 @@ function billingInvoice(overrides: Record<string, unknown> = {}) {
     invoiceDate: new Date('2026-08-01'),
     dueDate: new Date('2026-08-31'),
     currencyCode: 'USD',
-    subtotal: new Decimal('100000'),
-    vatAmount: new Decimal('5000'),
+    subtotal: new Decimal('105000'),
     totalAmount: new Decimal('105000'),
     outstandingAmount: new Decimal('105000'),
     documentStatus: 'APPROVED',
@@ -1255,9 +1254,7 @@ describe('getBilling — the invoice-total settlement basis', () => {
     expect(result.position.outstanding).toBe('0.00');
     expect(result.position.collectionRate).toBe(100);
     expect(result.invoices[0]!.status).toBe('PAID');
-    // Both bases are carried so a screen showing them together can label which is which.
-    expect(result.invoices[0]!.subtotal).toBe('100000.00');
-    expect(result.invoices[0]!.vatAmount).toBe('5000.00');
+    expect(result.invoices[0]!.subtotal).toBe('105000.00');
   });
 
   /** A draft invoice is a document somebody is still writing, not a claim on the client. */

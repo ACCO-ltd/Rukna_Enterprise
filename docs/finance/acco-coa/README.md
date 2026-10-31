@@ -38,8 +38,8 @@ question in **Note / question for Finance**.
   expenses.
 - **Family and personal accounts are kept exactly as they are**, as expenses. Any reclassification
   is Finance's decision.
-- **Input VAT is non-recoverable** (already decided): supplier bills are recorded gross; there is no
-  "VAT to reclaim" account. Sales tax on client invoices is set on Accounting → Tax.
+- **No VAT** (ADR-050): ACCO is not registered for VAT, so the chart has no VAT accounts and no
+  document carries VAT.
 - Reporting currency is USD; no Period 13 (year-end adjustments post in December).
 
 ## New accounts Rukna needs
@@ -49,7 +49,6 @@ question in **Note / question for Finance**.
 | 13000 | Advances to suppliers | Supplier advance payments post here automatically. |
 | 21000 | Advances received from clients | Client advance (mobilisation) payments. |
 | 21100 | Unapplied client receipts | Client money received before it is matched to an invoice. |
-| 21300 | Output VAT payable | Sales tax on client invoices. (ACCO already uses 22000 for salaries payable.) |
 | 39000 | Current year earnings | Reports compute it; nothing posts to it. |
 | 15500 / 15600 / 15700 / 15800 | Fixed-asset group headings | Buildings, vehicles, plant, tools. |
 | 15900 | Accumulated depreciation | ACCO books depreciation expense (62400) but has only one accumulated-depreciation account. |

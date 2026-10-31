@@ -274,7 +274,7 @@ describe('ADR-045 P6 — record receipt → bill → settle', () => {
         dueDate: '2026-10-08',
         currencyCode: 'USD',
         purchaseOrderId: poId,
-        lines: [{ description: lines[0].description, quantity: 10, unitPrice: 54, netAmount: 540, vatAmount: 0, expenseProfileCode: env.postingProfileCode }],
+        lines: [{ description: lines[0].description, quantity: 10, unitPrice: 54, netAmount: 540, expenseProfileCode: env.postingProfileCode }],
       });
       await svc.bills.submit(env.payer2, bill.id);
       expect((await prisma.supplierBill.findUniqueOrThrow({ where: { id: bill.id } })).matchStatus).toBe('EXCEPTION');

@@ -140,7 +140,6 @@ describe('CommercialService — getOverview (Slice 7)', () => {
           ? { dueDate: opts.dueDate }
           : { dueDate: new Date('2026-10-31') }),
         subtotal: new Decimal(total),
-        vatAmount: new Decimal(0),
         totalAmount: new Decimal(total),
         outstandingAmount: new Decimal(outstanding),
         currencyCode: 'USD',
@@ -161,7 +160,6 @@ describe('CommercialService — getOverview (Slice 7)', () => {
         invoiceId,
         reason: 'CORRECTION',
         netAmount: new Decimal(amount),
-        vatAmount: new Decimal(0),
         totalAmount: new Decimal(amount),
         accountingDate: new Date('2026-09-05'),
         postingStatus: 'POSTED',

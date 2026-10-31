@@ -17,7 +17,7 @@ const day = () => env.periods.openStart.toISOString().slice(0, 10);
 const draft = (invoiceNumber: string) =>
   svc.supplierBillService.create(env.identity, {
     supplierId: env.supplierId, supplierInvoiceNumber: invoiceNumber, billDate: day(), dueDate: day(), currencyCode: 'USD',
-    lines: [{ description: 'Scaffold hire', netAmount: 300, vatAmount: 0, expenseProfileCode: env.postingProfileCode }],
+    lines: [{ description: 'Scaffold hire', netAmount: 300, expenseProfileCode: env.postingProfileCode }],
   } as never);
 
 beforeAll(async () => {

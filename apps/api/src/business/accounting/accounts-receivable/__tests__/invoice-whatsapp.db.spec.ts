@@ -103,7 +103,6 @@ async function makeInvoice(
       dueDate: new Date('2026-10-15T00:00:00Z'),
       currencyCode: 'USD',
       subtotal: '12500.00',
-      vatAmount: '0.00',
       totalAmount: '12500.00',
       outstandingAmount: '12500.00',
       billingAddressSnapshot: {

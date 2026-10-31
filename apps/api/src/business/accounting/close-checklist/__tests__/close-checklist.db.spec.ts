@@ -12,8 +12,6 @@ import { Decimal } from '@prisma/client/runtime/library';
 
 import { AccountingFixtureFactory, type AccountingTestEnv } from '../../__tests__/helpers/fixture.factory';
 import { buildServices, type AccountingServices } from '../../__tests__/helpers/build-services';
-import { VatReportService } from '../../vat-report/application/vat-report.service';
-import { VatReportRepository } from '../../vat-report/infrastructure/vat-report.repository';
 import { CloseChecklistService } from '../application/close-checklist.service';
 import { CloseChecklistRepository } from '../infrastructure/close-checklist.repository';
 
@@ -29,14 +27,13 @@ beforeAll(async () => {
   checklist = new CloseChecklistService(
     new CloseChecklistRepository(tenancy),
     svc.periodManagementService,
-    new VatReportService(tenancy, new VatReportRepository()),
     { record: async () => undefined } as never,
   );
   await prisma.bankAccount.update({ where: { id: env.bankAccountId }, data: { isReconcilable: true, status: 'ACTIVE' } });
   await prisma.clientInvoice.create({
     data: {
       organizationId: env.orgId, clientId: env.clientId, sourceIpcId: null, invoiceDate: env.periods.openStart, dueDate: env.periods.openEnd,
-      currencyCode: 'USD', subtotal: new Decimal(100), vatAmount: new Decimal(0), totalAmount: new Decimal(100), outstandingAmount: new Decimal(100),
+      currencyCode: 'USD', subtotal: new Decimal(100), totalAmount: new Decimal(100), outstandingAmount: new Decimal(100),
       billingAddressSnapshot: {}, documentStatus: 'DRAFT', postingStatus: 'NOT_POSTED', createdBy: env.identity.userId,
     },
   });
@@ -60,7 +57,6 @@ it('CL-01: an unposted invoice blocks lock and close; tie-out done; bank shown b
   expect(checks.get('close')!.status).toBe('BLOCKED');
   expect(checks.get('tie-out')!.status).toBe('DONE');
   expect(checks.get('banks')!.status).toBe('TODO');
-  expect(checks.get('vat')!.status).toBe('INFO');
   expect(c.readyToClose).toBe(false);
   expect(c.requireBankReconciliation).toBe(false);
 });

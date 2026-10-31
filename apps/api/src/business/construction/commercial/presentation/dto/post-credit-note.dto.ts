@@ -11,9 +11,4 @@ export class PostCreditNoteDto {
   @IsOptional()
   @IsString()
   revenueAccountCode?: string;
-
-  @ApiPropertyOptional({ description: 'GL account code for VAT Output (resolved by role if omitted)' })
-  @IsOptional()
-  @IsString()
-  vatAccountCode?: string;
 }

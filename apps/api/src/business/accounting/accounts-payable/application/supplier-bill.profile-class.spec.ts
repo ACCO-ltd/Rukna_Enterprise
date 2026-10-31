@@ -34,7 +34,7 @@ function build(accountClass: string | null) {
 const dto = (code: string) => ({
   supplierId: 's1', supplierInvoiceNumber: 'INV-1', billDate: '2026-09-01', dueDate: '2026-10-01',
   currencyCode: 'USD', billId: 'x', apAccountCode: '20000', projectId: undefined,
-  lines: [{ description: 'hire', netAmount: 100, vatAmount: 0, expenseProfileCode: code }],
+  lines: [{ description: 'hire', netAmount: 100, expenseProfileCode: code }],
   // A PO-less bill with no project needs no cost target — keeps the test on the profile rule.
 }) as never;
 

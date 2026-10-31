@@ -33,7 +33,7 @@ async function savedBill(amount: number) {
     billDate: day(),
     dueDate: env.periods.openEnd.toISOString().slice(0, 10),
     currencyCode: 'USD',
-    lines: [{ description: 'Site security', netAmount: amount, vatAmount: 0, expenseProfileCode: env.postingProfileCode }],
+    lines: [{ description: 'Site security', netAmount: amount, expenseProfileCode: env.postingProfileCode }],
   } as never);
   return svc.supplierBillService.submit(env.identity, bill.id);
 }

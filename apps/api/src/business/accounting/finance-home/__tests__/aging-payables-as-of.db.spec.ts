@@ -35,7 +35,7 @@ beforeAll(async () => {
   // 100 debit note. Day 7: a 50 payment applied; it is reversed on day 9.
   const bill = await svc.supplierBillService.create(env.identity, {
     supplierId: env.supplierId, supplierInvoiceNumber: 'AA-1', billDate: day(2), dueDate: day(12), currencyCode: 'USD',
-    lines: [{ description: 'Formwork', netAmount: 1000, vatAmount: 0, expenseProfileCode: env.postingProfileCode }],
+    lines: [{ description: 'Formwork', netAmount: 1000, expenseProfileCode: env.postingProfileCode }],
   } as never);
   await svc.supplierBillService.submit(env.identity, bill.id);
   const b = await prisma.supplierBill.findUniqueOrThrow({ where: { id: bill.id } });

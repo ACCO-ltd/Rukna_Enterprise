@@ -415,7 +415,7 @@ Meet the financial officer and collect:
 - Sample receipt / payment voucher
 - Sample journal voucher
 - Bank statement and reconciliation format
-- Tax rules (VAT, WHT, or equivalent for Somalia)
+- Tax rules (WHT or equivalent for Somalia). VAT is out of scope: ADR-050.
 - Currency conversion policy
 - Project cost report format
 - Month-end closing checklist

@@ -34,7 +34,6 @@ beforeAll(async () => {
   aging = new AgingReportService({ getClient: () => prisma } as never, new FinanceHomeRepository());
   for (const [code, name, accountClass, subtype] of [
     ['42100', 'Equipment hire income', 'INCOME', 'OTHER_INCOME'],
-    ['22000', 'Sales tax payable', 'LIABILITY', 'VAT_OUTPUT_PAYABLE'],
   ] as const) {
     const a = await prisma.account.create({ data: { id: `${env.orgId}-${code}`, organizationId: env.orgId, code, normalBalance: 'CREDIT', createdBy: env.identity.userId } });
     await prisma.accountVersion.create({

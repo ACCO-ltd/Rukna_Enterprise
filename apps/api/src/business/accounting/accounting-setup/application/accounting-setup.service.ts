@@ -9,11 +9,9 @@ import {
   AccountingSetupRepository,
   type ExistingSetupRecord,
 } from '../infrastructure/accounting-setup.repository.js';
-import { planNoTaxCodes, planVatTaxCodes } from '../domain/setup-tax-codes.js';
 import {
   CONSTRUCTION_TEMPLATE_ID,
   MAX_BANKS,
-  OUTPUT_VAT_CODE,
   RETAINED_EARNINGS_CODE,
   bankAccountCode,
   resolveTemplate,
@@ -41,16 +39,10 @@ export interface SetupStatusView {
   accountCount: number;
   hasFiscalYear: boolean;
   hasPolicies: boolean;
-  /**
-   * ADR-041 — the default sales tax Finance has already configured. When set, setup keeps it and
-   * creates no tax codes; the VAT question is not asked.
-   */
-  defaultSalesTax: { code: string; name: string; ratePercent: string } | null;
 }
 
 export interface InstallSetupInput {
   templateId: typeof CONSTRUCTION_TEMPLATE_ID;
-  vat: { charged: boolean; ratePercent?: number };
   banks: Array<{ accountName: string; bankName: string; accountNumber?: string }>;
   fiscalYear: { year: number; startMonth?: number };
 }
@@ -60,7 +52,6 @@ export interface InstallSetupResult {
   postingProfilesCreated: number;
   fiscalYear: { id: string; name: string };
   bankAccountsCreated: number;
-  taxCodesCreated: number;
 }
 
 export const ACCOUNTING_ALREADY_SET_UP = 'ACCOUNTING_ALREADY_SET_UP';
@@ -103,7 +94,7 @@ export class AccountingSetupService {
   ) {}
 
   /** Preview: exactly what an install with these choices would create. */
-  getTemplate(query: { vatRate?: number; banks?: number }): SetupTemplateView {
+  getTemplate(query: { banks?: number }): SetupTemplateView {
     const bankCount = Math.min(Math.max(query.banks ?? 0, 0), MAX_BANKS);
     const resolved = resolveTemplate({
       bankNames: Array.from({ length: bankCount }, (_, i) => `Bank ${i + 1}`),
@@ -128,10 +119,7 @@ export class AccountingSetupService {
 
   async getStatus(identity: RequestIdentity): Promise<SetupStatusView> {
     const prisma = this.tenancy.getClient();
-    const [facts, defaultTax] = await Promise.all([
-      this.repo.getStatusFacts(prisma, identity.activeOrganizationId),
-      this.repo.findDefaultOutputTax(prisma, identity.activeOrganizationId),
-    ]);
+    const facts = await this.repo.getStatusFacts(prisma, identity.activeOrganizationId);
     const reason: SetupStatusView['reason'] =
       facts.accountCount > 0 ? 'CHART_NOT_EMPTY' : facts.existingRecords.length > 0 ? 'PARTIAL_SETUP' : 'READY';
     return {
@@ -141,9 +129,6 @@ export class AccountingSetupService {
       accountCount: facts.accountCount,
       hasFiscalYear: facts.hasFiscalYear,
       hasPolicies: facts.hasPolicies,
-      defaultSalesTax: defaultTax
-        ? { code: defaultTax.code, name: defaultTax.name, ratePercent: defaultTax.rate.toString() }
-        : null,
     };
   }
 
@@ -158,18 +143,16 @@ export class AccountingSetupService {
 
     const startMonth = input.fiscalYear.startMonth ?? 1;
     const fyPlan = buildFiscalYearPlan(input.fiscalYear.year, startMonth);
-    // Versions (accounts, profiles, tax codes) start at the fiscal-year start or today, whichever is
+    // Versions (accounts, profiles) start at the fiscal-year start or today, whichever is
     // earlier: a chart installed for a future year must already be in force today, or every edit
     // and every posting dated before the year would find no version (review M2).
     const effectiveFrom = earliestOf(fyPlan.startDate, todayUtc());
-    const vatRate = input.vat.charged ? input.vat.ratePercent! : null;
     const banks = input.banks.map((b) => ({
       accountName: b.accountName.trim(),
       bankName: b.bankName.trim(),
       accountNumber: b.accountNumber?.trim() || null,
     }));
     const template = resolveTemplate({ bankNames: banks.map((b) => b.accountName) });
-    const taxCodes = vatRate !== null ? planVatTaxCodes(vatRate) : planNoTaxCodes();
     const currencyCode = await this.config.getBaseCurrency(orgId);
 
     try {
@@ -186,17 +169,6 @@ export class AccountingSetupService {
           const postingProfilesCreated = await this.repo.createPostingProfiles(
             tx, orgId, template.postingProfiles, idByCode, effectiveFrom, userId,
           );
-
-          // ADR-041 — tax Finance configured before the chart is kept as it is: no codes are created
-          // and the VAT answer is not applied. Either way, sales codes get the Output VAT account.
-          const taxAlreadyConfigured = (await this.repo.findDefaultOutputTax(tx, orgId)) !== null;
-          const taxCodesCreated =
-            taxCodes.length && !taxAlreadyConfigured
-              ? await this.repo.createTaxCodes(
-                  tx, orgId, taxCodes, { outputTaxAccountId: idByCode.get(OUTPUT_VAT_CODE)! }, effectiveFrom, userId,
-                )
-              : 0;
-          await this.repo.linkOutputTaxAccount(tx, orgId, idByCode.get(OUTPUT_VAT_CODE)!);
 
           const fiscalYear = await this.repo.createFiscalYear(
             tx, orgId, fyPlan, idByCode.get(RETAINED_EARNINGS_CODE)!, userId,
@@ -225,7 +197,6 @@ export class AccountingSetupService {
             postingProfilesCreated,
             fiscalYear: { id: fiscalYear.id, name: fiscalYear.name },
             bankAccountsCreated,
-            taxCodesCreated,
           };
 
           await this.repo.recordAudit(tx, {
@@ -235,11 +206,6 @@ export class AccountingSetupService {
             after: {
               templateId: template.templateId,
               templateVersion: template.version,
-              vat: taxAlreadyConfigured
-                ? { alreadyConfigured: true }
-                : vatRate !== null
-                  ? { charged: true, ratePercent: vatRate, taxCodes: taxCodes.map((t) => t.code) }
-                  : { charged: false },
               banks: banks.map((b, i) => ({ glCode: bankAccountCode(i), accountName: b.accountName, bankName: b.bankName })),
               ...result,
               fiscalYear: { ...result.fiscalYear, startDate: fyPlan.startDate.toISOString().slice(0, 10) },
@@ -281,12 +247,6 @@ export class AccountingSetupService {
   private validate(input: InstallSetupInput): void {
     if (input.templateId !== CONSTRUCTION_TEMPLATE_ID) {
       throw invalid(`Unknown template "${String(input.templateId)}"`);
-    }
-    if (input.vat.charged) {
-      const rate = input.vat.ratePercent;
-      if (rate === undefined || rate === null || !(rate > 0) || rate > 100) {
-        throw invalid('A VAT rate greater than 0 and at most 100 is required when VAT is charged', { field: 'vat.ratePercent' });
-      }
     }
     if (input.banks.length > MAX_BANKS) {
       throw invalid(`At most ${MAX_BANKS} banks can be set up at once`, { field: 'banks' });

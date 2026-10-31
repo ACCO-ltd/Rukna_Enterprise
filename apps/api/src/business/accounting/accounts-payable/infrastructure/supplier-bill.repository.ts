@@ -16,7 +16,6 @@ export interface CreateSupplierBillData {
   projectId?: string;
   departmentId?: string;
   subtotal: Decimal;
-  vatAmount: Decimal;
   totalAmount: Decimal;
   createdBy: string;
   lines: {
@@ -25,8 +24,6 @@ export interface CreateSupplierBillData {
     quantity?: Decimal;
     unitPrice?: Decimal;
     netAmount: Decimal;
-    vatAmount: Decimal;
-    grossAmount: Decimal;
     expenseProfileCode: string;
     projectId?: string;
     departmentId?: string;
@@ -51,8 +48,8 @@ export interface CreateSupplierBillData {
 // nothing reconciled — and, since no bill form ever sent a project at all, the GL side was always null.
 //
 // `accruedBasis` is the amount the goods receipt actually accrued for the quantity this bill covers:
-// billedQuantity × poUnitPrice. Releasing the accrual at the bill's gross amount instead left a
-// permanent −VAT residual in ACCRUED, because the accrual was raised net of a tax the bill adds.
+// billedQuantity × poUnitPrice. Releasing the accrual at the bill's amount instead would leave a
+// residual in ACCRUED whenever the supplier charged a different price.
 export interface BillLineCostTarget {
   supplierBillLineId: string;
   purchaseOrderLineId: string;
@@ -183,7 +180,6 @@ export class SupplierBillRepository {
         projectId: data.projectId ?? null,
         departmentId: data.departmentId ?? null,
         subtotal: data.subtotal,
-        vatAmount: data.vatAmount,
         totalAmount: data.totalAmount,
         outstandingAmount: data.totalAmount,
         documentStatus: 'DRAFT',

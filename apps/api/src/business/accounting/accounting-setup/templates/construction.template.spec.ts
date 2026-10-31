@@ -10,7 +10,6 @@ import {
   type TemplateAccount,
 } from './construction.js';
 import { buildFiscalYearPlan, fiscalYearName } from '../../accounting-core/domain/fiscal-calendar.js';
-import { planVatTaxCodes, vatTaxCode } from '../domain/setup-tax-codes.js';
 
 const banks = (n: number) => Array.from({ length: n }, (_, i) => `Bank ${i + 1}`);
 
@@ -61,15 +60,14 @@ describe.each(CHOICES)('construction template (banks=$bankNames.length)', (choic
     expect(ap).toMatchObject({ isControlAccount: true, controlledSubledgerType: 'ACCOUNTS_PAYABLE', controlPostingPolicy: 'SYSTEM_ONLY' });
     expect(byCode.get('21100')!.controlPostingPolicy).toBe('SYSTEM_ONLY');
     expect(byCode.get('13000')!.controlPostingPolicy).toBe('SYSTEM_ONLY');
-    expect(byCode.get('22000')!.controlPostingPolicy).toBe('SYSTEM_OR_APPROVED_ADJUSTMENT');
     // Only AR and AP are control accounts.
     expect(accounts.filter((a) => a.isControlAccount).map((a) => a.code).sort()).toEqual(['11000', '20000']);
   });
 
-  it('output VAT payable always exists; no input-VAT asset (ACC-TAX-001, ADR-041)', () => {
-    expect(byCode.get('22000')?.accountSubtype).toBe('VAT_OUTPUT_PAYABLE');
+  it('has no VAT accounts (ADR-050)', () => {
+    expect(byCode.has('22000')).toBe(false);
     expect(byCode.has('14100')).toBe(false);
-    expect(accounts.some((a) => a.accountSubtype === 'VAT_INPUT_RECOVERABLE')).toBe(false);
+    expect(accounts.some((a) => /vat|sales tax/i.test(a.name))).toBe(false);
   });
 
   it('banks are 10100, 10101, … under 10000, flagged BANK and named as given', () => {
@@ -110,10 +108,10 @@ describe.each(CHOICES)('construction template (banks=$bankNames.length)', (choic
 });
 
 describe('construction template — shape', () => {
-  it('lists exactly the ADR-040 chart codes (79 without banks)', () => {
+  it('lists exactly the ADR-040 chart codes (78 without banks)', () => {
     const ADR_040_CODES = [
     '10000', '10900', '11000', '12000', '13000', '13100', '13200', '14000', '15000',
-    '15100', '15200', '15300', '15400', '15500', '15900', '20000', '21000', '21100', '22000',
+    '15100', '15200', '15300', '15400', '15500', '15900', '20000', '21000', '21100',
     '23000', '23100', '23200', '23300', '24000', '30000', '31000', '32000', '33000', '40000',
     '42000', '42100', '42200', '42900', '51000', '51100', '51200', '51300', '51400', '51500',
     '51600', '51700', '51900', '52000', '52100', '52200', '52300', '53000', '53100', '53200',
@@ -123,7 +121,7 @@ describe('construction template — shape', () => {
     ];
     const codes = resolveTemplate({ bankNames: [] }).accounts.map((a) => a.code);
     expect([...codes].sort()).toEqual([...ADR_040_CODES].sort());
-    expect(codes).toHaveLength(79);
+    expect(codes).toHaveLength(78);
   });
 
   it('rejects more than MAX_BANKS banks', () => {
@@ -171,22 +169,5 @@ describe('fiscal calendar', () => {
 
   it('rejects a month outside 1..12', () => {
     expect(() => buildFiscalYearPlan(2026, 13)).toThrow(RangeError);
-  });
-});
-
-describe('VAT tax codes', () => {
-  it('VAT{rate}_OUT / VAT{rate}_IN within the 10-character column', () => {
-    expect(planVatTaxCodes(5).map((c) => [c.code, c.recoveryMethod])).toEqual([
-      ['VAT5_OUT', 'FULLY_RECOVERABLE'],
-      ['VAT5_IN', 'NON_RECOVERABLE'],
-    ]);
-    expect(vatTaxCode(100, 'OUTPUT')).toBe('VAT100_OUT');
-    expect(vatTaxCode(7.5, 'OUTPUT')).toBe('VAT7.5_OUT');
-    expect(vatTaxCode(12.5, 'OUTPUT')).toBe('VAT12.5_O');
-    expect(vatTaxCode(12.25, 'INPUT')).toBe('VAT12.25_I');
-    for (const r of [0.01, 5, 12.25, 99.99, 100]) {
-      expect(vatTaxCode(r, 'OUTPUT').length).toBeLessThanOrEqual(10);
-      expect(vatTaxCode(r, 'INPUT').length).toBeLessThanOrEqual(10);
-    }
   });
 });

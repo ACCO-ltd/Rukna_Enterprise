@@ -16,7 +16,6 @@ import {
 import { AccountRepository } from '../infrastructure/account.repository.js';
 import { JournalRepository } from '../infrastructure/journal.repository.js';
 import { DocumentSequenceRepository } from '../infrastructure/document-sequence.repository.js';
-import { impliedTaxRatePercent } from '../domain/tax-amount.js';
 
 // ─── DTOs ─────────────────────────────────────────────────────────────────────
 
@@ -33,7 +32,6 @@ export interface OpenArInvoiceDto {
   dueDate: string;
   currencyCode: string;
   subtotal: number;
-  vatAmount: number;
   totalAmount: number;
 }
 
@@ -44,7 +42,6 @@ export interface OpenApBillDto {
   dueDate: string;
   currencyCode: string;
   subtotal: number;
-  vatAmount: number;
   totalAmount: number;
   expenseProfileCode: string;
 }
@@ -168,7 +165,6 @@ export class OpeningBalanceService {
       let arImported = 0;
       for (const inv of dto.openArInvoices ?? []) {
         const subtotal = new Decimal(inv.subtotal);
-        const vatAmount = new Decimal(inv.vatAmount);
         const totalAmount = new Decimal(inv.totalAmount);
 
         await tx.clientInvoice.create({
@@ -180,11 +176,7 @@ export class OpeningBalanceService {
             dueDate: new Date(inv.dueDate),
             currencyCode: inv.currencyCode,
             subtotal,
-            vatAmount,
             totalAmount,
-            // ADR-041 — an opening invoice arrives with its tax amount, not a code: record the rate
-            // its own figures imply, so it reads like any other invoice.
-            taxRate: impliedTaxRatePercent(subtotal, vatAmount),
             outstandingAmount: totalAmount,
             billingAddressSnapshot: { migratedFrom: 'QuickBooks', invoiceRef: inv.invoiceRef },
             documentStatus: 'APPROVED',
@@ -200,7 +192,6 @@ export class OpeningBalanceService {
       let apImported = 0;
       for (const bill of dto.openApBills ?? []) {
         const subtotal = new Decimal(bill.subtotal);
-        const vatAmount = new Decimal(bill.vatAmount);
         const totalAmount = new Decimal(bill.totalAmount);
         const norm = bill.supplierInvoiceNumber.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
 
@@ -214,7 +205,6 @@ export class OpeningBalanceService {
             dueDate: new Date(bill.dueDate),
             currencyCode: bill.currencyCode,
             subtotal,
-            vatAmount,
             totalAmount,
             outstandingAmount: totalAmount,
             documentStatus: 'APPROVED',

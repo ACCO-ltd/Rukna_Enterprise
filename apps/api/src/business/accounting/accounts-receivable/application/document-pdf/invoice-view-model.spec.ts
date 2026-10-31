@@ -4,7 +4,6 @@ import {
   clientAddressLines,
   invoiceNotes,
   paymentTermsLabel,
-  salesTaxLabel,
   type InvoiceLineSource,
 } from './invoice-view-model';
 import { brandView, footerColumns } from './pdf-kit';
@@ -65,7 +64,7 @@ describe('buildInvoiceViewModel — the minimal layout', () => {
     ).toContain('Tax Reg. —');
   });
 
-  it('labels the table in normal case with the currency, and totals with "Sales Tax (5%)"', () => {
+  it('labels the table in normal case with the currency, and a subtotal with no tax row', () => {
     expect(vm.columns).toEqual({
       index: '#',
       description: 'Description',
@@ -85,9 +84,8 @@ describe('buildInvoiceViewModel — the minimal layout', () => {
     ]);
     expect(vm.totals).toEqual([
       { label: 'Subtotal', value: 'USD 8,000.00' },
-      { label: 'Sales Tax (5%)', value: 'USD 400.00' },
     ]);
-    expect(vm.total).toEqual({ label: 'Total Due', value: 'USD 8,400.00' });
+    expect(vm.total).toEqual({ label: 'Total Due', value: 'USD 8,000.00' });
   });
 
   it('shows retention and advance recovery as "Less" rows above an amount due net of them (ADR-046 §5)', () => {
@@ -95,20 +93,19 @@ describe('buildInvoiceViewModel — the minimal layout', () => {
       ...minimalInvoiceFixture,
       retentionAmount: '400.00',
       advanceRecoveryAmount: '800.00',
-      totalAmount: '7200.00',
+      totalAmount: '6800.00',
     });
     expect(ipc.totals).toEqual([
       { label: 'Subtotal', value: 'USD 8,000.00' },
-      { label: 'Sales Tax (5%)', value: 'USD 400.00' },
       { label: 'Less retention', value: '−USD 400.00' },
       { label: 'Less advance recovery', value: '−USD 800.00' },
     ]);
-    expect(ipc.total).toEqual({ label: 'Total Due', value: 'USD 7,200.00' });
+    expect(ipc.total).toEqual({ label: 'Total Due', value: 'USD 6,800.00' });
   });
 
   it('adds no "Less" rows when nothing is held back', () => {
     const plain = buildInvoiceViewModel({ ...minimalInvoiceFixture, retentionAmount: '0.00' });
-    expect(plain.totals).toHaveLength(2);
+    expect(plain.totals).toHaveLength(1);
   });
 
   it('falls back to one line for the subtotal when the invoice has no lines', () => {
@@ -174,19 +171,6 @@ describe('footerColumns', () => {
     expect(brandView(base).palette.accent).toBe('#1F3FA8');
     expect(brandView({ ...base, brandColorHex: '#0f766e' }).palette.accent).toBe('#0F766E');
     expect(brandView({ ...base, brandColorHex: 'red' }).palette.accent).toBe('#1F3FA8');
-  });
-});
-
-describe('salesTaxLabel', () => {
-  it('uses the invoice rate (ADR-041), trimmed', () => {
-    expect(salesTaxLabel({ taxRatePercent: '5.0000', subtotal: '100', vatAmount: '5' })).toBe('Sales Tax (5%)');
-    expect(salesTaxLabel({ taxRatePercent: '12.5', subtotal: '100', vatAmount: '12.5' })).toBe('Sales Tax (12.5%)');
-    expect(salesTaxLabel({ taxRatePercent: '0', subtotal: '100', vatAmount: '0' })).toBe('Sales Tax (0%)');
-  });
-
-  it('derives the rate from the amounts only without one, and drops it when it cannot', () => {
-    expect(salesTaxLabel({ taxRatePercent: null, subtotal: '200', vatAmount: '10' })).toBe('Sales Tax (5%)');
-    expect(salesTaxLabel({ taxRatePercent: null, subtotal: '0', vatAmount: '0' })).toBe('Sales Tax');
   });
 });
 

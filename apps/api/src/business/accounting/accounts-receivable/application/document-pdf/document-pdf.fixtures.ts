@@ -36,9 +36,7 @@ export const minimalInvoiceFixture: InvoiceDocumentInput = {
   paymentTerms: 'Net 30',
   currencyCode: 'USD',
   subtotal: '8000.00',
-  vatAmount: '400.00',
-  totalAmount: '8400.00',
-  taxRatePercent: '5',
+  totalAmount: '8000.00',
   client: { name: 'Ahmed Shirie', address: null, city: 'Mogadishu', countryCode: 'SO', taxNumber: '254708023039' },
   project: { code: 'ACCO-DHL-26-0012', name: 'ABC', location: 'Dharkeynley, KM4, Mogadishu' },
   lines: [
@@ -85,8 +83,7 @@ export const fortyLineInvoiceFixture: InvoiceDocumentInput = {
   invoiceNumber: 'INV-000125',
   lines: manyLines,
   subtotal: manySubtotal.toFixed(2),
-  vatAmount: (manySubtotal * 0.05).toFixed(2),
-  totalAmount: (manySubtotal * 1.05).toFixed(2),
+  totalAmount: manySubtotal.toFixed(2),
 };
 
 export const receiptFixture: ReceiptDocumentInput = {

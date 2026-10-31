@@ -13,7 +13,7 @@ export class CreateCreditNoteDto {
   @IsIn(CREDIT_NOTE_REASONS)
   reason!: 'OMISSION' | 'PRICE_ERROR' | 'CORRECTION' | 'NEGATIVE_VARIATION';
 
-  @ApiProperty({ description: 'Ex-VAT net amount to credit (decimal string)' })
+  @ApiProperty({ description: 'Amount to credit (decimal string)' })
   @IsString()
   netAmount!: string;
 

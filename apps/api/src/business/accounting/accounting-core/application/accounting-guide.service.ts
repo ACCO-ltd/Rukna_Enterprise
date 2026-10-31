@@ -158,7 +158,7 @@ export class AccountingGuideService {
         // chart screen with the setup flow; otherwise the chart screen itself.
         detail: chartEmpty
           ? 'Install the construction chart, fiscal year, banks, posting profiles and numbering in one step.'
-          : 'Define the accounts and mark the control roles (AR, AP, revenue, VAT, bank, unapplied, supplier advance).',
+          : 'Define the accounts and mark the control roles (AR, AP, revenue, bank, unapplied, supplier advance).',
         done: !chartEmpty && !hasBlocker('POSTING_ACCOUNT_NOT_CONFIGURED') && !hasBlocker('POSTING_ACCOUNT_AMBIGUOUS'),
         href: chartEmpty ? SETUP_HREF : `${BASE}/chart-of-accounts`,
         blocked: hasBlocker('POSTING_ACCOUNT_AMBIGUOUS'),
@@ -366,7 +366,7 @@ export class AccountingGuideService {
       {
         key: 'close-checklist',
         label: 'Work through the close checklist',
-        detail: 'Everything posted, banks reconciled, AR/AP tied out and the VAT for the month, in one place.',
+        detail: 'Everything posted, banks reconciled, AR/AP tied out, in one place.',
         status: 'TODO',
         href: `${BASE}/close`,
       },

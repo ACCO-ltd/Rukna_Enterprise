@@ -115,7 +115,6 @@ export class SupplierDebitNoteService {
         supplierId: l.supplierId ?? bill.supplierId,
         boqNodeId: l.boqNodeId ?? undefined,
         spendCategoryId: l.spendCategoryId ?? undefined,
-        taxCodeId: l.taxCodeId ?? undefined,
       });
       const posted = await this.postingPort.post(
         {
@@ -228,7 +227,6 @@ export class SupplierDebitNoteService {
             supplierId: l.supplierId ?? undefined,
             boqNodeId: l.boqNodeId ?? undefined,
             spendCategoryId: l.spendCategoryId ?? undefined,
-            taxCodeId: l.taxCodeId ?? undefined,
           })),
         },
         tx as never,

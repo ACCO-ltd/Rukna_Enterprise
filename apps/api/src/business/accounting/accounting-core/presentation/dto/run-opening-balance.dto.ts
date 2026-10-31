@@ -44,11 +44,7 @@ export class OpenArInvoiceDto {
   @IsNumber()
   subtotal!: number;
 
-  @ApiProperty({ example: 500 })
-  @IsNumber()
-  vatAmount!: number;
-
-  @ApiProperty({ example: 10500 })
+  @ApiProperty({ example: 10000 })
   @IsNumber()
   totalAmount!: number;
 }
@@ -78,11 +74,7 @@ export class OpenApBillDto {
   @IsNumber()
   subtotal!: number;
 
-  @ApiProperty({ example: 250 })
-  @IsNumber()
-  vatAmount!: number;
-
-  @ApiProperty({ example: 5250 })
+  @ApiProperty({ example: 5000 })
   @IsNumber()
   totalAmount!: number;
 

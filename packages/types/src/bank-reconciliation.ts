@@ -114,7 +114,7 @@ export interface PostStatementLineRequest {
 export type CloseCheckStatus = 'DONE' | 'TODO' | 'BLOCKED' | 'INFO';
 
 export interface CloseCheck {
-  key: 'documents' | 'banks' | 'tie-out' | 'vat' | 'lock' | 'close';
+  key: 'documents' | 'banks' | 'tie-out' | 'lock' | 'close';
   status: CloseCheckStatus;
   /** Server-written English detail, for screens and logs. */
   detail: string;

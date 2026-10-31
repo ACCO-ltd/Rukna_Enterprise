@@ -40,14 +40,6 @@ async function main() {
   });
   console.log('  ✓ FiscalCalendarPolicy');
 
-  // ── 3. Tax policy (codes created below) ───────────────────────────────────
-  await prisma.taxPolicy.upsert({
-    where: { organizationId: orgId },
-    create: { organizationId: orgId, updatedBy: SEED_USER },
-    update: { updatedBy: SEED_USER },
-  });
-  console.log('  ✓ TaxPolicy');
-
   // ── 4. Numbering policy ───────────────────────────────────────────────────
   await prisma.numberingPolicy.upsert({
     where: { organizationId: orgId },
@@ -116,27 +108,6 @@ async function main() {
   // ── Shared constant ───────────────────────────────────────────────────────
   const EFFECTIVE_FROM = new Date('2026-01-01');
 
-  // ── 8. Tax codes ──────────────────────────────────────────────────────────
-  await prisma.taxCode.upsert({
-    where: { organizationId_code: { organizationId: orgId, code: 'VAT5_OUT' } },
-    create: {
-      organizationId: orgId, code: 'VAT5_OUT', name: 'Output VAT 5%',
-      rate: 5, taxType: 'VAT', recoveryMethod: 'FULLY_RECOVERABLE',
-      effectiveFrom: EFFECTIVE_FROM, status: 'ACTIVE', createdBy: SEED_USER,
-    },
-    update: { rate: 5, status: 'ACTIVE' },
-  });
-  await prisma.taxCode.upsert({
-    where: { organizationId_code: { organizationId: orgId, code: 'VAT5_IN' } },
-    create: {
-      organizationId: orgId, code: 'VAT5_IN', name: 'Input VAT 5% (Non-Recoverable)',
-      rate: 5, taxType: 'VAT', recoveryMethod: 'NON_RECOVERABLE',
-      effectiveFrom: EFFECTIVE_FROM, status: 'ACTIVE', createdBy: SEED_USER,
-    },
-    update: { rate: 5, status: 'ACTIVE' },
-  });
-  console.log('  ✓ TaxCodes (VAT5_OUT, VAT5_IN)');
-
   // ── 9. Minimum COA ────────────────────────────────────────────────────────
   type CoaRow = {
     code: string; name: string;
@@ -155,7 +126,6 @@ async function main() {
     { code: '17000', name: 'Prepaid Expenses',          accountClass: 'ASSET',     accountSubtype: 'PREPAYMENTS',               normalBalance: 'DEBIT',  isPostingAllowed: true,  isControlAccount: false, controlPostingPolicy: 'UNRESTRICTED' },
     { code: '20000', name: 'Accounts Payable',          accountClass: 'LIABILITY', accountSubtype: 'ACCOUNTS_PAYABLE',          normalBalance: 'CREDIT', isPostingAllowed: false, isControlAccount: true,  controlledSubledgerType: 'ACCOUNTS_PAYABLE', controlPostingPolicy: 'SYSTEM_ONLY' },
     { code: '20100', name: 'Supplier Advance',          accountClass: 'ASSET',     accountSubtype: 'SUPPLIER_ADVANCE',          normalBalance: 'DEBIT',  isPostingAllowed: true,  isControlAccount: false, controlPostingPolicy: 'SYSTEM_ONLY' },
-    { code: '20200', name: 'Output VAT Payable',        accountClass: 'LIABILITY', accountSubtype: 'VAT_OUTPUT_PAYABLE',        normalBalance: 'CREDIT', isPostingAllowed: true,  isControlAccount: false, controlPostingPolicy: 'SYSTEM_OR_APPROVED_ADJUSTMENT' },
     { code: '30000', name: 'ASAS Group Capital',        accountClass: 'EQUITY',    accountSubtype: 'SHARE_CAPITAL',             normalBalance: 'CREDIT', isPostingAllowed: true,  isControlAccount: false, controlPostingPolicy: 'UNRESTRICTED' },
     { code: '31000', name: 'Retained Earnings',         accountClass: 'EQUITY',    accountSubtype: 'RETAINED_EARNINGS',         normalBalance: 'CREDIT', isPostingAllowed: true,  isControlAccount: false, controlPostingPolicy: 'UNRESTRICTED' },
     { code: '42600', name: 'Project Income',            accountClass: 'INCOME',    accountSubtype: 'PROJECT_REVENUE',           normalBalance: 'CREDIT', isPostingAllowed: true,  isControlAccount: false, controlPostingPolicy: 'UNRESTRICTED' },

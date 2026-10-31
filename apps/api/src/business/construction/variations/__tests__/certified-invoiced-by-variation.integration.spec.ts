@@ -287,7 +287,6 @@ describe('certifiedInvoicedByVariation (CONST-VAR-008)', () => {
         contractId: opts.contractId,
         currencyCode: 'USD',
         subtotal: total,
-        vatAmount: new Decimal('0'),
         totalAmount: total,
         outstandingAmount: total,
         billingAddressSnapshot: {},

@@ -147,7 +147,7 @@ it('FS-04: AR GL balance matches ∑ outstanding client invoice amounts', async 
       { accountCode: env.accounts.reCode,  creditBalance: 4000 },
     ],
     openArInvoices: [
-      { clientId: env.clientId, invoiceRef: 'INV-FS04', invoiceDate: '2025-01-10', dueDate: '2025-02-10', currencyCode: 'USD', subtotal: 3810, vatAmount: 190, totalAmount: 4000 },
+      { clientId: env.clientId, invoiceRef: 'INV-FS04', invoiceDate: '2025-01-10', dueDate: '2025-02-10', currencyCode: 'USD', subtotal: 3810, totalAmount: 4000 },
     ],
   });
 

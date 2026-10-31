@@ -54,11 +54,6 @@ export class ManualInvoiceDto {
   @MaxLength(3)
   currencyCode!: string;
 
-  @ApiPropertyOptional({ description: "Omitted = the organisation's default sales tax code" })
-  @IsOptional()
-  @IsString()
-  taxCodeId?: string;
-
   @ApiPropertyOptional({ example: 'Net 15' })
   @IsOptional()
   @IsString()

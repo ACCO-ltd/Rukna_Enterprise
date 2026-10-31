@@ -7,12 +7,12 @@
  *
  * Rows that depend on install-time choices are not listed here:
  *   - one CASH_AND_BANK account per bank the user names (codes 10100, 10101, … under 10000) —
- *     built by `resolveTemplate`;
- *   - No input-VAT asset: ACCO's input VAT is non-recoverable (ADR-006 ACC-TAX-001, ADR-041) — it is
- *     absorbed into the cost a bill posts to, so there is never a balance to hold.
+ *     built by `resolveTemplate`.
+ *
+ * No VAT accounts (ADR-050): the organisation is not registered for VAT.
  *
  * Invariants (enforced by `resolveTemplate` callers' tests, see construction.template.spec.ts):
- *   - exactly one ACTIVE account each of the six resolver roles; no heading carries one;
+ *   - exactly one ACTIVE account each of the five resolver roles; no heading carries one;
  *   - at least one CASH_AND_BANK (10900 Petty cash is always present);
  *   - every parent precedes its child; codes are unique.
  */
@@ -39,7 +39,7 @@ export interface TemplateAccount {
   controlledSubledgerType: SubledgerType | null;
   controlPostingPolicy: ControlPostingPolicy;
   /** Present only on rows that exist because of an install-time choice. */
-  conditional?: 'VAT' | 'BANK';
+  conditional?: 'BANK';
 }
 
 export interface TemplatePostingProfile {
@@ -48,12 +48,11 @@ export interface TemplatePostingProfile {
   accountCode: string;
 }
 
-/** The six roles `PostingAccountResolver` resolves to exactly one ACTIVE account. */
+/** The five roles `PostingAccountResolver` resolves to exactly one ACTIVE account. */
 export const RESOLVER_SUBTYPES: readonly AccountSubtype[] = [
   'ACCOUNTS_RECEIVABLE',
   'ACCOUNTS_PAYABLE',
   'PROJECT_REVENUE',
-  'VAT_OUTPUT_PAYABLE',
   'UNAPPLIED_CLIENT_RECEIPTS',
   'SUPPLIER_ADVANCE',
 ] as AccountSubtype[];
@@ -77,7 +76,7 @@ function row(
     parent?: string;
     control?: SubledgerType;
     policy?: ControlPostingPolicy;
-    conditional?: 'VAT' | 'BANK';
+    conditional?: 'BANK';
     /** A non-heading account that accepts no postings at all. */
     noPosting?: boolean;
   } = {},
@@ -113,7 +112,6 @@ export const BANK_PARENT_CODE = '10000';
 export const BANK_BASE_CODE = 10100;
 export const MAX_BANKS = 20;
 export const PETTY_CASH_CODE = '10900';
-export const OUTPUT_VAT_CODE = '22000';
 export const RETAINED_EARNINGS_CODE = '31000';
 export const PROJECT_REVENUE_CODE = '40000';
 
@@ -149,7 +147,6 @@ const STATIC_ACCOUNTS: TemplateAccount[] = [
   }),
   row('21000', 'Advances received from clients', 'LIABILITY', 'CLIENT_ADVANCE_LIABILITY'),
   row('21100', 'Unapplied client receipts', 'LIABILITY', 'UNAPPLIED_CLIENT_RECEIPTS', { policy: SYSTEM_ONLY }),
-  row(OUTPUT_VAT_CODE, 'Output VAT payable', 'LIABILITY', 'VAT_OUTPUT_PAYABLE', { policy: SYSTEM_OR_ADJ }),
   row('23000', 'Other current liabilities', 'LIABILITY', 'OTHER_CURRENT_LIABILITY', H),
   ...children('23000', 'LIABILITY', 'OTHER_CURRENT_LIABILITY', [
     ['23100', 'Accrued expenses'],

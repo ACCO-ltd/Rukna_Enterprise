@@ -1,7 +1,7 @@
 /**
  * ADR-048 — hand-typed invoices for non-contract sales (live DB).
  *
- *   MI-01  a draft is priced from its lines (qty × rate to cents) and taxed by the tax-code rule
+ *   MI-01  a draft is priced from its lines (qty × rate to cents), with no tax
  *   MI-02  a draft can be rewritten; once approved it cannot
  *   MI-03  posting credits each line's income account (summed per account) and debits AR the total
  *   MI-04  reversing mirrors those lines
@@ -60,7 +60,6 @@ beforeAll(async () => {
   env = await AccountingFixtureFactory.create(prisma);
   svc = buildServices(prisma);
   clientId = (await prisma.contract.findFirstOrThrow({ where: { organizationId: env.orgId } })).clientId;
-  await account('22000', 'Sales tax payable', 'LIABILITY', 'VAT_OUTPUT_PAYABLE');
   await account('42000', 'Other income', 'INCOME', 'OTHER_INCOME', false); // a header
   hireId = await account('42100', 'Equipment hire income', 'INCOME', 'OTHER_INCOME');
   scrapId = await account('42200', 'Sale of surplus materials', 'INCOME', 'OTHER_INCOME');
@@ -72,7 +71,7 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
-it('MI-01: a draft is priced from its lines and taxed', async () => {
+it('MI-01: a draft is priced from its lines', async () => {
   const inv = await svc.clientInvoiceService.createManual(
     env.identity,
     input([
@@ -85,9 +84,7 @@ it('MI-01: a draft is priced from its lines and taxed', async () => {
   expect(inv.projectId).toBeNull();
   expect(inv.contractId).toBeNull();
   expect(inv.subtotal.toFixed(2)).toBe('1375.03');
-  // The fixture org charges 5%: 68.75 tax → 1443.78.
-  expect(inv.vatAmount.toFixed(2)).toBe('68.75');
-  expect(inv.totalAmount.toFixed(2)).toBe('1443.78');
+  expect(inv.totalAmount.toFixed(2)).toBe('1375.03');
   expect(inv.documentStatus).toBe('DRAFT');
 });
 
@@ -119,8 +116,8 @@ it('MI-03: posting credits each income account and debits AR the total', async (
   expect(byAccount(scrapId).map((l) => l.creditAmount.toFixed(2))).toEqual(['120.00']);
   const debits = lines.reduce((s, l) => s + Number(l.debitAmount), 0);
   const credits = lines.reduce((s, l) => s + Number(l.creditAmount), 0);
-  expect(debits.toFixed(2)).toBe('2226.00'); // 2120 + 5% tax
-  expect(credits.toFixed(2)).toBe('2226.00');
+  expect(debits.toFixed(2)).toBe('2120.00');
+  expect(credits.toFixed(2)).toBe('2120.00');
 });
 
 it('MI-04: reversing mirrors the lines', async () => {

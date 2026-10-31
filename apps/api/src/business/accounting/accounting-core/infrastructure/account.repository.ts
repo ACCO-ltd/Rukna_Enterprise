@@ -131,7 +131,7 @@ export class AccountRepository {
    * accounts under it, a bank or cash account posting to it, and the set-up that names it.
    */
   async usage(prisma: TenantPrisma, organizationId: string, accountId: string) {
-    const [sums, entries, children, bank, taxCodes, profiles, years, templates] = await Promise.all([
+    const [sums, entries, children, bank, profiles, years, templates] = await Promise.all([
       prisma.journalLine.aggregate({
         where: { accountId, entry: { organizationId, status: 'POSTED' } },
         _sum: { debitAmount: true, creditAmount: true },
@@ -142,10 +142,6 @@ export class AccountRepository {
         select: { status: true },
       }),
       prisma.bankAccount.findFirst({ where: { organizationId, glAccountId: accountId, status: { not: 'CLOSED' } }, select: { accountName: true } }),
-      prisma.taxCode.findMany({
-        where: { organizationId, status: 'ACTIVE', OR: [{ outputTaxAccountId: accountId }, { inputTaxAccountId: accountId }] },
-        select: { code: true },
-      }),
       prisma.postingProfileVersion.findMany({
         where: { accountId, effectiveTo: null, profile: { organizationId, status: 'ACTIVE' } },
         select: { name: true },
@@ -162,7 +158,6 @@ export class AccountRepository {
       activeChildren: children.filter((c) => c.status === 'ACTIVE').length,
       linkedToBank: !!bank,
       usedBy: [
-        ...taxCodes.map((t) => `tax code ${t.code}`),
         ...profiles.map((p) => `posting profile ${p.name}`),
         ...years.map((y) => `fiscal year ${y.name} (retained earnings)`),
         ...(templates > 0 ? ['a posting rule'] : []),

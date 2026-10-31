@@ -106,7 +106,6 @@ interface Candidate {
   document_status: string;
   posting_status: string;
   subtotal: string;
-  vat_amount: string;
   total_amount: string;
   currency_code: string;
   invoice_date: Date;
@@ -125,7 +124,6 @@ async function findCandidates(prisma: TenantPrismaClient, orgId: string): Promis
       ci.document_status,
       ci.posting_status,
       ci.subtotal::text,
-      ci.vat_amount::text,
       ci.total_amount::text,
       ci.currency_code,
       ci.invoice_date,
@@ -234,7 +232,7 @@ async function main(): Promise<void> {
         );
         continue;
       }
-      console.log(`  ${candidate.origin} · ${candidate.currency_code} ${candidate.total_amount} · VAT ${candidate.vat_amount}`);
+      console.log(`  ${candidate.origin} · ${candidate.currency_code} ${candidate.total_amount}`);
 
       if (!apply) {
         console.log('  DRY RUN — would approve() then post() this invoice. Re-run with --apply --actor=<userId> to write.');
