@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import type { RequestIdentity } from '@erp/types';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { SnapshotService } from './snapshot.service.js';
+import { parseDateOnly } from '../../accounting-core/domain/calendar-day.js';
 
 export interface TrialBalanceLine {
   accountId: string;
@@ -67,7 +68,8 @@ export class TrialBalanceService {
     const prisma = this.tenancyService.getClient();
     const { activeOrganizationId: orgId } = identity;
 
-    const asOf = new Date(dto.asOfDate);
+    const asOf = dto.asOfDate?.length >= 10 ? parseDateOnly(dto.asOfDate) : null;
+    if (!asOf) throw new BadRequestException({ errorCode: 'DATE_INVALID', message: 'The date must be a real date written YYYY-MM-DD.' });
 
     // Find the period that contains the asOfDate
     const period = await prisma.accountingPeriod.findFirst({

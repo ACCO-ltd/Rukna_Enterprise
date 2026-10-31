@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import type { RequestIdentity } from '@erp/types';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
+import { parseDateOnly } from '../../accounting-core/domain/calendar-day.js';
 
 export interface PLLine {
   accountId: string;
@@ -55,8 +56,10 @@ export class PLReportService {
     const prisma = this.tenancyService.getClient();
     const { activeOrganizationId: orgId } = identity;
 
-    const from = new Date(dto.fromDate);
-    const to = new Date(dto.toDate);
+    const from = dto.fromDate?.length >= 10 ? parseDateOnly(dto.fromDate) : null;
+    const to = dto.toDate?.length >= 10 ? parseDateOnly(dto.toDate) : null;
+    if (!from || !to) throw new BadRequestException({ errorCode: 'DATE_INVALID', message: 'Both dates must be real dates written YYYY-MM-DD.' });
+    if (from > to) throw new BadRequestException({ errorCode: 'DATE_RANGE_INVALID', message: 'The start date is after the end date.' });
 
     const plClasses = ['INCOME', 'COST_OF_SALES', 'EXPENSE'] as const;
 
@@ -177,7 +180,7 @@ export class PLReportService {
       include: { periods: { orderBy: { periodNumber: 'asc' } } },
     });
 
-    if (!fy) return null;
+    if (!fy) throw new NotFoundException({ errorCode: 'FISCAL_YEAR_NOT_FOUND', message: 'Fiscal year not found.' });
 
     const columns = await Promise.all(
       fy.periods.map(async (period) => {
