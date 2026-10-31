@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react';
 import Link from 'next/link';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Plus } from 'lucide-react';
 import { Button, cn, EmptyState, type FilterValues, type ListFilterField } from '@erp/ui';
@@ -24,6 +25,7 @@ import { useJournals } from '../hooks/use-accounting';
 import { todayWireDate } from '../invoice-overdue';
 import { entryTotals } from '../journal-entry';
 import type { JournalEntry, JournalStatus } from '../types';
+import { JournalBook } from './journal-book';
 import { JournalStatusBadge } from './journal-status-badge';
 
 const STATUSES: JournalStatus[] = [
@@ -33,12 +35,17 @@ const STATUSES: JournalStatus[] = [
   'POSTED',
   'REJECTED',
   'REVERSED',
+  'CANCELLED',
 ];
 const DEFAULT_JOURNAL_SORT: SortState = { key: 'date', direction: 'desc' };
 
-/** `GET /journals` returns every journal (it takes only `projectId`), so status filters here. */
+/**
+ * `GET /journals` returns every journal (it takes only `projectId`), so status filters here. A
+ * cancelled journal shows only when asked for: it never reached the ledger.
+ */
 function journalMatchesFilters(journal: JournalEntry, filters: FilterValues): boolean {
-  return !filters.status || journal.status === filters.status;
+  if (!filters.status) return journal.status !== 'CANCELLED';
+  return journal.status === filters.status;
 }
 
 export function JournalsList({
@@ -165,6 +172,7 @@ export function JournalsList({
     byStatus('toApprove', 'SUBMITTED'),
     byStatus('returned', 'REJECTED'),
     byStatus('posted', 'POSTED'),
+    byStatus('cancelled', 'CANCELLED'),
   ];
   const builtIns: BuiltInView[] = builtInViews.map((v) => ({ ...v, count: countFor(v.state) }));
 
@@ -183,9 +191,10 @@ export function JournalsList({
     </Button>
   );
 
-  const waiting = all.filter((journal) => journal.status === 'SUBMITTED').length;
+  const live = all.filter((journal) => journal.status !== 'CANCELLED');
+  const waiting = live.filter((journal) => journal.status === 'SUBMITTED').length;
   const headerSummary =
-    all.length === 0 ? undefined : t('headerSummary', { count: all.length, waiting });
+    live.length === 0 ? undefined : t('headerSummary', { count: live.length, waiting });
 
   const grid = (
     <PlatformDataGrid
@@ -238,12 +247,65 @@ export function JournalsList({
   return (
     <div className="space-y-5">
       <ListPageHeader
-        eyebrow={t('eyebrow')}
         title={t('title')}
         summary={headerSummary}
         actions={createAction}
       />
+      <JournalTabs current="manual" />
       {grid}
+    </div>
+  );
+}
+
+/**
+ * GL-J — the page opens on manual journals; "All entries" is the day book, every posted entry
+ * whatever posted it. `?view=book` keeps the choice in the address.
+ */
+function JournalTabs({ current }: { current: 'manual' | 'book' }) {
+  const t = useTranslations('accounting.journals');
+  const router = useRouter();
+  const pathname = usePathname() ?? '/finance/accounting/journals';
+  return (
+    <div role="tablist" aria-label={t('tabsLabel')} className="flex gap-1 border-b border-border">
+      {(['manual', 'book'] as const).map((tab) => (
+        <button
+          key={tab}
+          type="button"
+          role="tab"
+          aria-selected={current === tab}
+          onClick={() => router.replace(tab === 'book' ? `${pathname}?view=book` : pathname)}
+          className={cn(
+            'min-h-10 whitespace-nowrap border-b-2 px-3 text-body-sm font-medium',
+            current === tab ? 'border-brand-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground',
+          )}
+        >
+          {t(tab === 'manual' ? 'tabManual' : 'tabBook')}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** The Journals page: manual journals, or the day book when `?view=book`. */
+export function JournalsPage() {
+  const t = useTranslations('accounting.journals');
+  const params = useSearchParams();
+  if (params?.get('view') !== 'book') return <JournalsList />;
+  return (
+    <div className="space-y-5">
+      <ListPageHeader
+        title={t('title')}
+        actions={
+          <Button asChild>
+            <Link href="/finance/accounting/journals/new">
+              <Plus size={16} aria-hidden="true" />
+              {t('newJournal')}
+            </Link>
+          </Button>
+        }
+      />
+      <JournalTabs current="book" />
+      <JournalBook />
     </div>
   );
 }

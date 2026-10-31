@@ -39,6 +39,7 @@ import { accountName, currentVersion } from '../account-display';
 import {
   editAccountDraftFrom,
   editAccountProblem,
+  headingCandidates,
   toUpdateAccountBody,
   type EditAccountDraft,
 } from '../coa-setup';
@@ -84,13 +85,10 @@ export function EditAccountForm({
     reason: useId(),
   };
 
-  // Every other account is a candidate parent; an account cannot parent itself.
+  // GL-C — an active heading of the account's class, never itself or an account under it.
   const parentCandidates = useMemo(
-    () =>
-      (accounts.data ?? [])
-        .filter((candidate) => candidate.id !== account.id && currentVersion(candidate))
-        .sort((a, b) => a.code.localeCompare(b.code)),
-    [accounts.data, account.id],
+    () => headingCandidates(accounts.data ?? [], currentVersion(account)?.accountClass, account.id),
+    [accounts.data, account],
   );
 
   const problem = editAccountProblem(draft);

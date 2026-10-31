@@ -6,7 +6,8 @@ import type { CreateJournalPayload, JournalEntry, JournalStatus } from './types'
  * ─── The rules a journal has to satisfy ─────────────────────────────────────────
  *
  * `DoubleEntryValidator` (`accounting-core/application/validators/double-entry.validator.ts`)
- * enforces exactly three things, and it runs at POST time — not at create, not at submit:
+ * enforces exactly three things at POST time, and since GL-J the server checks them again when the
+ * journal is saved and submitted (`manual-journal-rules.ts`):
  *
  *   1. at least two lines
  *   2. every line carries a debit or a credit, and never both
@@ -237,7 +238,7 @@ export function formatDifference(differenceMinor: number): string {
 
 // ─── Lifecycle ───────────────────────────────────────────────────────────────────
 
-export type JournalAction = 'submit' | 'approve' | 'reject' | 'post' | 'reverse';
+export type JournalAction = 'submit' | 'approve' | 'reject' | 'post' | 'reverse' | 'cancel';
 
 /**
  * Which actions the server will accept from a journal's current status.
@@ -250,16 +251,17 @@ export type JournalAction = 'submit' | 'approve' | 'reject' | 'post' | 'reverse'
 export function availableActions(status: JournalStatus): JournalAction[] {
   switch (status) {
     case 'DRAFT':
-      return ['submit'];
+      return ['submit', 'cancel'];
     case 'REJECTED':
-      return [];
+      return ['cancel'];
     case 'SUBMITTED':
-      return ['approve', 'reject'];
+      return ['approve', 'reject', 'cancel'];
     case 'APPROVED':
-      return ['post'];
+      return ['post', 'cancel'];
     case 'POSTED':
       return ['reverse'];
     case 'REVERSED':
+    case 'CANCELLED':
       return [];
   }
 }

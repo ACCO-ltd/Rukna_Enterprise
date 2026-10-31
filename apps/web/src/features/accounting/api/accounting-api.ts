@@ -36,6 +36,7 @@ import type {
   ProfitLoss,
   ReconciliationReport,
   ReverseJournalPayload,
+  JournalBookEntry,
   RunReconciliationPayload,
   TrialBalance,
   UpdateInvoiceDocumentSettingsBody,
@@ -92,6 +93,11 @@ export function updateAccount(id: string, body: UpdateAccountBody): Promise<Acco
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+}
+
+/** GL-C — make an account inactive, or active again. */
+export function setAccountStatus(id: string, status: 'ACTIVE' | 'INACTIVE'): Promise<Account> {
+  return apiClient<Account>(`/accounts/${id}/${status === 'INACTIVE' ? 'deactivate' : 'reactivate'}`, { method: 'POST' });
 }
 
 /**
@@ -451,6 +457,20 @@ export function approveJournal(
 /** Posts an APPROVED journal to the general ledger. Irreversible except by `reverseJournal`. */
 export function postJournal(id: string): Promise<JournalEntry> {
   return apiClient<JournalEntry>(`/journals/${id}/post`, { method: 'POST' });
+}
+
+/** GL-J — sets aside a journal that has not posted. */
+export function cancelJournal(id: string, reason: string): Promise<JournalEntry> {
+  return apiClient<JournalEntry>(`/journals/${id}/cancel`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason }),
+  });
+}
+
+/** GL-J — every posted entry dated in the range, whatever posted it. */
+export function listJournalEntries(fromDate: string, toDate: string): Promise<JournalBookEntry[]> {
+  return apiClient<JournalBookEntry[]>(`/journals/entries?fromDate=${fromDate}&toDate=${toDate}`);
 }
 
 /** Raises a new entry with the debits and credits swapped. Neither entry is removed. */

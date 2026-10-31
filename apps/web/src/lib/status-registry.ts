@@ -110,11 +110,13 @@ export const STATUS_REGISTRY = {
   },
   journal: {
     DRAFT: 'neutral',
-    SUBMITTED: 'progress',
-    APPROVED: 'success',
+    SUBMITTED: 'attention',
+    APPROVED: 'progress',
     REJECTED: 'danger',
-    POSTED: 'success',
+    // GL-J — posted is the normal end state; colour is kept for what needs someone.
+    POSTED: 'neutral',
     REVERSED: 'historical',
+    CANCELLED: 'historical',
   },
   materialRequest: {
     DRAFT: 'neutral',

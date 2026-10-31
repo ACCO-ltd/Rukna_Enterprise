@@ -125,4 +125,68 @@ export class AccountRepository {
       orderBy: { versionNumber: 'desc' },
     });
   }
+
+  /**
+   * GL-C — what depends on an account: its posted entries and balance (debits less credits), the
+   * accounts under it, a bank or cash account posting to it, and the set-up that names it.
+   */
+  async usage(prisma: TenantPrisma, organizationId: string, accountId: string) {
+    const [sums, entries, children, bank, taxCodes, profiles, years, templates] = await Promise.all([
+      prisma.journalLine.aggregate({
+        where: { accountId, entry: { organizationId, status: 'POSTED' } },
+        _sum: { debitAmount: true, creditAmount: true },
+      }),
+      prisma.journalLine.count({ where: { accountId, entry: { organizationId, status: 'POSTED' } } }),
+      prisma.account.findMany({
+        where: { organizationId, versions: { some: { effectiveTo: null, parentAccountId: accountId } } },
+        select: { status: true },
+      }),
+      prisma.bankAccount.findFirst({ where: { organizationId, glAccountId: accountId, status: { not: 'CLOSED' } }, select: { accountName: true } }),
+      prisma.taxCode.findMany({
+        where: { organizationId, status: 'ACTIVE', OR: [{ outputTaxAccountId: accountId }, { inputTaxAccountId: accountId }] },
+        select: { code: true },
+      }),
+      prisma.postingProfileVersion.findMany({
+        where: { accountId, effectiveTo: null, profile: { organizationId, status: 'ACTIVE' } },
+        select: { name: true },
+      }),
+      prisma.fiscalYear.findMany({ where: { organizationId, retainedEarningsAccountId: accountId, status: { not: 'CLOSED' } }, select: { name: true } }),
+      prisma.postingRuleLineTemplate.count({ where: { fixedAccountId: accountId } }),
+    ]);
+    const debit = Number(sums._sum.debitAmount ?? 0);
+    const credit = Number(sums._sum.creditAmount ?? 0);
+    return {
+      balance: (debit - credit).toFixed(2),
+      hasEntries: entries > 0,
+      hasChildren: children.length > 0,
+      activeChildren: children.filter((c) => c.status === 'ACTIVE').length,
+      linkedToBank: !!bank,
+      usedBy: [
+        ...taxCodes.map((t) => `tax code ${t.code}`),
+        ...profiles.map((p) => `posting profile ${p.name}`),
+        ...years.map((y) => `fiscal year ${y.name} (retained earnings)`),
+        ...(templates > 0 ? ['a posting rule'] : []),
+      ],
+    };
+  }
+
+  /** The account and every heading above it, nearest first. */
+  async lineage(prisma: TenantPrisma, organizationId: string, accountId: string): Promise<string[]> {
+    const seen: string[] = [];
+    let id: string | null = accountId;
+    while (id && !seen.includes(id) && seen.length < 50) {
+      seen.push(id);
+      const current: { parentAccountId: string | null } | null = await prisma.accountVersion.findFirst({
+        where: { accountId: id, effectiveTo: null, account: { organizationId } },
+        select: { parentAccountId: true },
+      });
+      id = current?.parentAccountId ?? null;
+    }
+    return seen;
+  }
+
+  /** Case-insensitive: "a-100" and "A-100" are the same code to a person reading a report. */
+  findByCodeInsensitive(prisma: TenantPrisma, organizationId: string, code: string) {
+    return prisma.account.findFirst({ where: { organizationId, code: { equals: code, mode: 'insensitive' } }, select: { id: true, code: true } });
+  }
 }

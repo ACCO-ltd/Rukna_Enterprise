@@ -48,9 +48,9 @@ export class CreateManualJournalDto {
   @IsString() @IsNotEmpty() @MaxLength(500)
   description!: string;
 
-  @ApiProperty({ example: 'USD' })
-  @IsString() @IsNotEmpty() @MaxLength(3)
-  currencyCode!: string;
+  @ApiPropertyOptional({ example: 'USD', description: 'ADR-024: the ledger currency (USD); anything else is refused' })
+  @IsString() @IsOptional() @MaxLength(3)
+  currencyCode?: string;
 
   @ApiPropertyOptional({ example: '2025-02-01', description: 'G-2: an accrual reverses itself on this date (after the accounting date) when it posts' })
   @IsDateString() @IsOptional()
