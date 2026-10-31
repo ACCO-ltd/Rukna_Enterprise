@@ -54,7 +54,7 @@ it('DIM-01: every line of an invoice, and of its reversal, names the client', as
   await svc.clientInvoiceService.reverse(env.identity, inv.id, { reversalDate: day, reason: 'Test' });
   const reversed = await prisma.clientInvoice.findUniqueOrThrow({ where: { id: inv.id } });
   const back = await linesOf(reversed.reversalJournalEntryId);
-  expect(back).toHaveLength(3);
+  expect(back).toHaveLength(2);
   expect(back.every((l) => l.clientId === env.clientId)).toBe(true);
 });
 

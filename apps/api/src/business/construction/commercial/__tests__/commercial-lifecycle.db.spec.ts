@@ -346,11 +346,11 @@ describe('CommercialBillingService — lifecycle scenarios', () => {
 
       m1InvoiceId = pkg.milestoneInvoice!.id;
 
-      // M1 = 40% × 500,000 = 200,000; VAT = 5% → total 210,000
+      // M1 = 40% × 500,000 = 200,000
       const inv = await prisma.clientInvoice.findUniqueOrThrow({ where: { id: m1InvoiceId } });
       expect(new Decimal(inv.subtotal.toString()).toFixed(2)).toBe('200000.00');
-      expect(new Decimal(inv.totalAmount.toString()).toFixed(2)).toBe('210000.00');
-      expect(new Decimal(inv.outstandingAmount.toString()).toFixed(2)).toBe('210000.00');
+      expect(new Decimal(inv.totalAmount.toString()).toFixed(2)).toBe('200000.00');
+      expect(new Decimal(inv.outstandingAmount.toString()).toFixed(2)).toBe('200000.00');
     });
 
     it('A-02: contractValue is unchanged after issuing M1 — billing never mutates entitlement', async () => {
@@ -491,13 +491,13 @@ describe('CommercialBillingService — lifecycle scenarios', () => {
       expect(pkg.milestoneInvoice).not.toBeNull();
       m3InvoiceId = pkg.milestoneInvoice!.id;
 
-      // M3 = 20% × 500,000 = 100,000; VAT 5% → total 105,000
+      // M3 = 20% × 500,000 = 100,000
       const inv = await prisma.clientInvoice.findUniqueOrThrow({ where: { id: m3InvoiceId } });
-      expect(new Decimal(inv.totalAmount.toString()).toFixed(2)).toBe('105000.00');
-      expect(new Decimal(inv.outstandingAmount.toString()).toFixed(2)).toBe('105000.00');
+      expect(new Decimal(inv.totalAmount.toString()).toFixed(2)).toBe('100000.00');
+      expect(new Decimal(inv.outstandingAmount.toString()).toFixed(2)).toBe('100000.00');
     });
 
-    it('E-02: partial payment of 60,000 → outstanding = 45,000', async () => {
+    it('E-02: partial payment of 60,000 → outstanding = 40,000', async () => {
       // We use a bank account from the env fixture (different org) so we need to
       // create a minimal bank account in our test org.
       // Create a GL account and bank account in orgId.
@@ -574,7 +574,7 @@ describe('CommercialBillingService — lifecycle scenarios', () => {
         },
       });
 
-      // Issue a partial payment of 60,000 against the M3 invoice (total 105,000).
+      // Issue a partial payment of 60,000 against the M3 invoice (total 100,000).
       // The service uses CustomerReceiptService which calls the real posting service.
       // We skip the full GL assertion here — the outstanding decrement is the invariant.
       try {
@@ -589,14 +589,14 @@ describe('CommercialBillingService — lifecycle scenarios', () => {
         // If the payment fails due to missing AR account config, we verify the
         // guard instead: outstanding should remain unchanged (atomicity).
         const inv = await prisma.clientInvoice.findUniqueOrThrow({ where: { id: m3InvoiceId } });
-        // Either the payment succeeded (outstanding = 45,000) or it rolled back (105,000).
+        // Either the payment succeeded (outstanding = 40,000) or it rolled back (100,000).
         const outstanding = new Decimal(inv.outstandingAmount.toString()).toFixed(2);
-        expect(['105000.00', '45000.00']).toContain(outstanding);
+        expect(['100000.00', '40000.00']).toContain(outstanding);
         return;
       }
 
       const inv = await prisma.clientInvoice.findUniqueOrThrow({ where: { id: m3InvoiceId } });
-      expect(new Decimal(inv.outstandingAmount.toString()).toFixed(2)).toBe('45000.00');
+      expect(new Decimal(inv.outstandingAmount.toString()).toFixed(2)).toBe('40000.00');
       // The receipt's journal names its number, never its database id.
       const receipt = await prisma.paymentReceipt.findFirstOrThrow({
         where: { organizationId: orgId, postingStatus: 'POSTED' },
@@ -712,7 +712,7 @@ describe('CommercialBillingService — lifecycle scenarios', () => {
       const m2Inv = await prisma.clientInvoice.findUniqueOrThrow({
         where: { id: m2Pkg!.milestoneInvoice!.id },
       });
-      // m2 total = 150,000 × 1.05 = 157,500; no payment was recorded.
+      // m2 total = 150,000; no payment was recorded.
       expect(new Decimal(m2Inv.outstandingAmount.toString()).toNumber()).toBeGreaterThan(0);
     });
   });

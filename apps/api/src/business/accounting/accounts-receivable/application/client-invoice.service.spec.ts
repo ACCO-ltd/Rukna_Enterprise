@@ -147,7 +147,7 @@ describe('ADR-046 §5 — IPC invoice bills the period net of retention', () => 
     creditNotes: [],
   };
 
-  it('bills gross and retention for the period only, with tax on the revenue', async () => {
+  it('bills gross and retention for the period only', async () => {
     const { repo, service } = build(secondCertificate, [firstInvoice]);
     repo.findByIpc.mockResolvedValue(null);
     repo.create.mockResolvedValue({ id: 'inv-2' });
@@ -157,10 +157,9 @@ describe('ADR-046 §5 — IPC invoice bills the period net of retention', () => 
     const data = repo.create.mock.calls[0][1];
     expect(data.certifiedGrossAmount.toFixed(2)).toBe('150000.00');
     expect(data.subtotal.toFixed(2)).toBe('150000.00');
-    expect(data.vatAmount.toFixed(2)).toBe('7500.00'); // 5% of 150,000
     expect(data.retentionAmount.toFixed(2)).toBe('7500.00'); // 12,500 to date − 5,000 billed
     expect(data.advanceRecoveryAmount.toFixed(2)).toBe('0.00');
-    expect(data.totalAmount.toFixed(2)).toBe('150000.00'); // 150,000 + 7,500 VAT − 7,500 retention
+    expect(data.totalAmount.toFixed(2)).toBe('142500.00'); // 150,000 − 7,500 retention
   });
 
   it('refuses a certificate already fully billed, without creating an invoice', async () => {
@@ -239,8 +238,7 @@ describe('ADR-023 — generateFromInstallment (milestone billing)', () => {
     const data = repo.create.mock.calls[0][1];
     expect(data.sourceInstallmentId).toBe('inst-1');
     expect(data.subtotal.toString()).toBe('300000');
-    expect(data.vatAmount.toString()).toBe('15000');
-    expect(data.totalAmount.toString()).toBe('315000');
+    expect(data.totalAmount.toString()).toBe('300000');
   });
 
   // ADR-029 T-6 — the invoice amount derives from the FROZEN baseContractValue. A variation that raised
@@ -395,10 +393,9 @@ describe('ADR-029 R-4 — generateFromSeparateCharge (one-off separate-charge bi
     expect(data.sourceBoqNodeId).toBe('node-1');
     expect(data.sourceInstallmentId).toBeUndefined();
     expect(data.sourceIpcId).toBeUndefined();
-    // Amount is the leaf's own totalAmount (20,000) + 5% VAT — never re-keyed.
+    // Amount is the leaf's own totalAmount (20,000) — never re-keyed.
     expect(data.subtotal.toString()).toBe('20000');
-    expect(data.vatAmount.toString()).toBe('1000');
-    expect(data.totalAmount.toString()).toBe('21000');
+    expect(data.totalAmount.toString()).toBe('20000');
     // Client + contract come from the project's one active client contract.
     expect(data.clientId).toBe('client-1');
     expect(data.contractId).toBe('c-1');

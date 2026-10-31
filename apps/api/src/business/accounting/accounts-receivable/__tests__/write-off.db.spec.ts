@@ -46,9 +46,9 @@ beforeAll(async () => {
   day = env.periods.openStart.toISOString().slice(0, 10);
   const inv = await svc.clientInvoiceService.createManual(env.identity, {
     clientId: env.clientId, invoiceDate: day, dueDate: day, currencyCode: 'USD', paymentTerms: 'Due on receipt',
-    lines: [{ description: 'Crane hire', quantity: '1', unitPrice: '1000.00', revenueAccountCode: '42100' }],
+    lines: [{ description: 'Crane hire', quantity: '1', unitPrice: '1050.00', revenueAccountCode: '42100' }],
   });
-  await svc.clientInvoiceService.issue(env.identity, inv.id); // 1050 with 5% tax
+  await svc.clientInvoiceService.issue(env.identity, inv.id); // 1050
   invoiceId = inv.id;
 }, 90_000);
 

@@ -304,12 +304,12 @@ describe('CommercialBillingService — issuePackage + recordDelivery (Slice 4B)'
     expect(pkg.milestoneInvoice!.invoiceNumber).toMatch(/^INV-/);
     expect(pkg.variationLines).toHaveLength(0);
 
-    // instB = 30% of 500,000 = 150,000; total = 150,000 * 1.05 = 157,500
+    // instB = 30% of 500,000 = 150,000; total = 150,000
     const inv = await prisma.clientInvoice.findUniqueOrThrow({
       where: { id: pkg.milestoneInvoice!.id },
     });
     expect(new Decimal(inv.subtotal.toString()).toFixed(2)).toBe('150000.00');
-    expect(new Decimal(inv.totalAmount.toString()).toFixed(2)).toBe('157500.00');
+    expect(new Decimal(inv.totalAmount.toString()).toFixed(2)).toBe('150000.00');
   });
 
   it('I-02: repeated issuePackage on instB is idempotent — same invoice returned', async () => {
@@ -392,8 +392,8 @@ describe('CommercialBillingService — issuePackage + recordDelivery (Slice 4B)'
     const packages = await service.getBillingPackages(identity, contractId);
     const instAPkg = packages.packages.find((p) => p.installmentId === instA);
 
-    // milestone: 200,000 × 1.05 = 210,000; VO: 10,000 × 1.05 = 10,500; sum = 220,500
-    expect(instAPkg!.presentedTotal).toBe('220500.00');
+    // milestone: 200,000; VO: 10,000; sum = 210,000
+    expect(instAPkg!.presentedTotal).toBe('210000.00');
   });
 
   // ─── Group D: Delivery history ───────────────────────────────────────────────

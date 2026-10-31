@@ -43,10 +43,9 @@ beforeAll(async () => {
       clientId: env.clientId, invoiceDate: day, dueDate: day, currencyCode: 'USD', paymentTerms: 'Due on receipt',
       lines: [{ description: 'Crane hire', quantity: '1', unitPrice: amount, revenueAccountCode: '42100' }],
     });
-  // 5% tax: 1000 → 1050; 200 → 210.
-  const a = await sale('1000.00');
+  const a = await sale('1050.00');
   await svc.clientInvoiceService.issue(env.identity, a.id);
-  const b = await sale('200.00');
+  const b = await sale('210.00');
   await svc.clientInvoiceService.issue(env.identity, b.id);
   const receive = (amount: string, applied: number) =>
     svc.customerReceiptService.receive(env.identity, {
@@ -58,7 +57,7 @@ beforeAll(async () => {
   const bounced = await receive('50.00', 50);
   await svc.customerReceiptService.reverse(env.identity, bounced.id, { reversalDate: day, reason: 'Cheque bounced' });
   const creditNotes = new CreditNoteService({ getClient: () => prisma } as never, svc.sequenceRepo, new PostingAccountResolver(new AccountRepository()), svc.postingService as never);
-  const cn = await creditNotes.createCreditNote(env.identity, { invoiceId: b.id, reason: 'PRICE_ERROR', netAmount: '20.00', accountingDate: day });
+  const cn = await creditNotes.createCreditNote(env.identity, { invoiceId: b.id, reason: 'PRICE_ERROR', netAmount: '21.00', accountingDate: day });
   await creditNotes.postCreditNote(env.identity, { creditNoteId: cn.id });
 }, 90_000);
 

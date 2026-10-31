@@ -289,9 +289,9 @@ describe('Commercial redesign D1 — prepare / issue / delete (DB)', () => {
     const todoDraft = built.todo.find((t) => t.kind === 'DRAFT_INVOICE');
     expect(todoDraft?.installmentId).toBe(st.A);
     // One row per package: the VO draft riding on Stage A is folded into the stage's row, and the
-    // row's amount is the package total (195,000 + 5% = 204,750, plus 10,000 + 5% = 10,500).
+    // row's amount is the package total (195,000 plus 10,000).
     expect(built.todo.filter((t) => t.kind === 'DRAFT_INVOICE')).toHaveLength(1);
-    expect(todoDraft?.amount).toBe('215250.00'); // 204,750 + 10,500
+    expect(todoDraft?.amount).toBe('205000.00');
     await expect(workspace.getPreparePreview(identity, projectId, st.A)).rejects.toMatchObject({
       response: expect.objectContaining({ errorCode: 'STAGE_ALREADY_INVOICED' }),
     });

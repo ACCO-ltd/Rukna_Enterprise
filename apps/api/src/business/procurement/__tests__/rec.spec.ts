@@ -159,11 +159,11 @@ async function postGrn(poId: string, poLineId: string, qty: number) {
 }
 
 /**
- * Enter, match, approve and post a PO-backed bill. `vat` is charged on top of the net, and
- * posts into expense: ACCO's input VAT is non-recoverable (ACC-TAX-001), so the GL debit â€”
- * and therefore ACTUAL â€” is the gross.
+ * Enter, match, approve and post a PO-backed bill. `extra` is what the supplier charged above the
+ * order price; the bill line posts its amount to expense, so the GL debit and ACTUAL are the
+ * billed amount.
  */
-async function postBill(poId: string, qty: number, price: number, vat: number) {
+async function postBill(poId: string, qty: number, price: number, extra: number) {
   const bill = await svc.supplierBillService.create(env.identity, {
     supplierId: env.supplierId,
     supplierInvoiceNumber: `REC-INV-${Math.random().toString(36).slice(2)}`,
@@ -176,7 +176,7 @@ async function postBill(poId: string, qty: number, price: number, vat: number) {
         description: '12mm Rebar',
         quantity: qty,
         unitPrice: price,
-        netAmount: qty * price,
+        netAmount: qty * price + extra,
         expenseProfileCode: env.postingProfileCode,
       },
     ],
@@ -216,8 +216,8 @@ describe('Scenario B â€” PO â†’ GRN â†’ posted bill, BOQ-coded', 
   const QTY = 100;
   const PRICE = 400;
   const NET = QTY * PRICE; // 40 000
-  const VAT = 2000;
-  const GROSS = NET + VAT; // 42 000
+  const EXTRA = 2000; // the supplier charged more than the order price
+  const GROSS = NET + EXTRA; // 42 000
 
   let poId: string;
 
@@ -227,7 +227,7 @@ describe('Scenario B â€” PO â†’ GRN â†’ posted bill, BOQ-coded', 
     poId = po.id;
     const line = po.revisions.find((r) => r.status === 'ACTIVE')!.lines[0]!;
     await postGrn(po.id, line.id, QTY);
-    await postBill(po.id, QTY, PRICE, VAT);
+    await postBill(po.id, QTY, PRICE, EXTRA);
   }, 60_000);
 
   it('REC-01: ledger ACTUAL equals posted GL project cost from supplier bills', async () => {
@@ -249,7 +249,7 @@ describe('Scenario B â€” PO â†’ GRN â†’ posted bill, BOQ-coded', 
     expect(rec.unattributedBillLines).toBe(0);
   });
 
-  it('REC-02: the three ledger stages sum to what was ordered, plus the tax on it', async () => {
+  it('REC-02: the three ledger stages sum to what was billed', async () => {
     const [committed, accrued, actual] = await Promise.all([
       ledgerStage('COMMITTED'),
       ledgerStage('ACCRUED'),
@@ -259,15 +259,15 @@ describe('Scenario B â€” PO â†’ GRN â†’ posted bill, BOQ-coded', 
     // Fully received and billed: nothing is still on order, nothing is still unbilled.
     expect(committed.toFixed(2)).toBe('0.00');
     expect(accrued.toFixed(2)).toBe('0.00');
-    // Committed-to-date is the ordered value plus the non-recoverable VAT the bill added â€”
-    // which is the real money the project spends, and the right basis for budget headroom.
+    // Committed-to-date is what the bill charged — the real money the project spends, and the
+    // right basis for budget headroom.
     expect(committed.plus(accrued).plus(actual).toFixed(2)).toBe(D(GROSS).toFixed(2));
   });
 
   /**
    * The accrual is raised on the purchase-order price and released on the same basis. It
-   * used to be released at the bill's GROSS, so a project that was fully billed carried a
-   * permanent âˆ’VAT residual and reported a NEGATIVE "remaining committed".
+   * used to be released at the bill's amount, so a project billed above the order price carried a
+   * permanent residual and reported a NEGATIVE "remaining committed".
    */
   it('REC-04: releasing the accrual leaves no residual', async () => {
     const accrued = await ledgerStage('ACCRUED');
