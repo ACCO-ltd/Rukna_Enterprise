@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -20,7 +20,7 @@ import type {
   MonthlyPL,
 } from '@/features/accounting/types';
 
-import { AccountLedgerReport } from './account-ledger';
+import { AccountLedgerReport, ledgerAccounts, onNormalSide } from './account-ledger';
 import { BalanceSheetReport } from './balance-sheet';
 import { MonthlyComparisonReport } from './monthly-comparison';
 
@@ -38,6 +38,7 @@ vi.mock('@/features/accounting/api/accounting-api', () => ({
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn(), prefetch: vi.fn() }),
   useSearchParams: () => new URLSearchParams(),
+  usePathname: () => '/finance/accounting/ledger',
 }));
 
 function account(): Account {
@@ -266,7 +267,7 @@ describe('AccountLedgerReport', () => {
   it('asks for an account before fetching anything', async () => {
     renderWithProviders(<AccountLedgerReport />);
 
-    expect(await screen.findByText('Choose an account to see its ledger.')).toBeInTheDocument();
+    expect(await screen.findByText('Choose an account')).toBeInTheDocument();
     expect(vi.mocked(getAccountLedger)).not.toHaveBeenCalled();
   });
 
@@ -276,9 +277,9 @@ describe('AccountLedgerReport', () => {
 
     await chooseOption(user, screen.getByLabelText('Account'), 'acc-bank');
 
-    expect(await screen.findByText('Client receipt')).toBeInTheDocument();
-    expect(screen.getByText('Opening balance')).toBeInTheDocument();
-    expect(screen.getByText('Closing balance')).toBeInTheDocument();
+    expect((await screen.findAllByText('Client receipt')).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Opening balance').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Closing balance').length).toBeGreaterThan(0);
   });
 
   it('shows the running balance the server computed', async () => {
@@ -287,19 +288,36 @@ describe('AccountLedgerReport', () => {
 
     await chooseOption(user, screen.getByLabelText('Account'), 'acc-bank');
 
-    // Plain decimal, not "$15,000.00": the ledger response carries no currency code, and
-    // `formatMoney` shows an unlabelled figure rather than inventing a symbol.
-    expect(await screen.findByText('15,000.00')).toBeInTheDocument();
+    // The ledger is in the ledger currency (ADR-024).
+    const table = await screen.findByRole('table', { name: 'Account ledger' });
+    expect(within(table).getByText('$15,000.00')).toBeInTheDocument();
   });
 
-  /** A draft journal is not in the ledger, and that is the first thing someone asks. */
-  it('says that only posted entries appear', async () => {
+  /** GL-L — a payables or income account reads in credit, not as a negative. */
+  it('reads a credit-side account on its own side', async () => {
     const user = userEvent.setup();
+    vi.mocked(getAccountLedger).mockResolvedValue(
+      ledger({ normalBalance: 'CREDIT', openingBalance: '-1000.00', closingBalance: '-1130.00', lines: [{ ...ledger().lines[0], debitAmount: '0.00', creditAmount: '130.00', runningBalance: '-1130.00' }] }),
+    );
     renderWithProviders(<AccountLedgerReport />);
-
     await chooseOption(user, screen.getByLabelText('Account'), 'acc-bank');
+    const table = await screen.findByRole('table', { name: 'Account ledger' });
+    expect(within(table).getAllByText('$1,130.00').length).toBeGreaterThan(0);
+    expect(within(table).queryByText(/-\$1,130/)).not.toBeInTheDocument();
+  });
 
-    expect(await screen.findByText(/Posted entries only/)).toBeInTheDocument();
+  /** GL-L — receivables and payables are kept by the system but have ledgers worth reading. */
+  it('offers control accounts, not headings', () => {
+    const base = account();
+    const v = base.versions[0];
+    const chart = [
+      { ...base, id: 'ar', code: '11000', versions: [{ ...v, isPostingAllowed: false, isControlAccount: true, controlPostingPolicy: 'SYSTEM_ONLY' as const }] },
+      { ...base, id: 'h', code: '10000', versions: [{ ...v, isPostingAllowed: false }] },
+      base,
+    ];
+    expect(ledgerAccounts(chart).map((a) => a.code)).toEqual(['10100', '11000']);
+    expect(onNormalSide('-1130.00', 'CREDIT')).toBe('1130.00');
+    expect(onNormalSide('0.00', 'CREDIT')).toBe('0.00');
   });
 
   it('distinguishes an empty range from a failure', async () => {
@@ -310,7 +328,7 @@ describe('AccountLedgerReport', () => {
     await chooseOption(user, screen.getByLabelText('Account'), 'acc-bank');
 
     expect(
-      await screen.findByText('Nothing was posted against this account in this range.'),
+      await screen.findByText('Nothing posted to this account in the period.'),
     ).toBeInTheDocument();
   });
 

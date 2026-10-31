@@ -6,6 +6,8 @@ import type { ClientStatement, ClientStatementLineKind, RequestIdentity } from '
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { ageOpenItems, buildStatementLines, type StatementMovement } from '../domain/client-statement.js';
 import { ClientStatementRepository } from '../infrastructure/client-statement.repository.js';
+import { summariseAccount } from '../domain/client-account-summary.js';
+import { describeInstrument } from '../domain/receipt-payment-method.js';
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -36,12 +38,14 @@ export class ClientStatementService {
     const client = await this.repo.findClient(prisma, orgId, clientId);
     if (!client) throw new NotFoundException({ errorCode: 'CLIENT_NOT_FOUND', message: `Client ${clientId} not found` });
 
-    const [invoices, creditNotes, receipts, writeOffs, refunds] = await Promise.all([
+    const [invoices, creditNotes, receipts, writeOffs, refunds, contracts, organization] = await Promise.all([
       this.repo.findInvoices(prisma, orgId, clientId),
       this.repo.findCreditNotes(prisma, orgId, clientId),
       this.repo.findReceipts(prisma, orgId, clientId),
       this.repo.findWriteOffs(prisma, orgId, clientId),
       this.repo.findRefunds(prisma, orgId, clientId),
+      this.repo.findContracts(prisma, orgId, clientId),
+      this.repo.findOrganization(prisma, orgId),
     ]);
     const reversalJournalIds = [
       ...invoices.map((i) => i.reversalJournalEntryId),
@@ -57,8 +61,21 @@ export class ClientStatementService {
         orgId,
         receipts.filter((r) => r.postingStatus === 'REVERSED' && !r.reversalJournalEntryId).map((r) => r.id),
       ),
-      this.repo.projectNames(prisma, orgId, [...new Set(invoices.map((i) => i.projectId).filter((id): id is string => Boolean(id)))]),
+      this.repo.projectNames(prisma, orgId, [
+        ...new Set([...invoices.map((i) => i.projectId), ...contracts.map((c) => c.projectId)].filter((id): id is string => Boolean(id))),
+      ]),
     ]);
+    const contractNumbers = new Map(contracts.map((c) => [c.id, c.contractNumber]));
+    // ST-3 — what each line is: "Project · contract" for contract billing, the client's PO or the
+    // first line for a hand-typed sale, how it was paid for a receipt.
+    const invoiceLabel = (inv: (typeof invoices)[number]) => {
+      const project = inv.projectId ? projectNames.get(inv.projectId) : undefined;
+      const contract = contractNumbers.get(inv.contractId ?? inv.sourceRetentionContractId ?? '');
+      if (project || contract) return [project, contract].filter(Boolean).join(' · ');
+      return inv.clientReference ? `PO ${inv.clientReference}` : (inv.lines[0]?.description ?? null);
+    };
+    const receiptLabel = (r: (typeof receipts)[number]) =>
+      r.paymentMethod && r.instrumentNumber ? describeInstrument(r.paymentMethod, r.issuer, r.instrumentNumber) : r.reference;
     const reversalDate = (journalId: string | null, fallback: Date | null) =>
       (journalId ? journalDates.get(journalId) : undefined) ?? fallback ?? null;
 
@@ -66,7 +83,7 @@ export class ClientStatementService {
     const movements: StatementMovement<Exclude<ClientStatementLineKind, 'OPENING_BALANCE'>>[] = [];
     for (const inv of invoices) {
       const amount = new Decimal(inv.totalAmount.toString());
-      const description = inv.projectId ? (projectNames.get(inv.projectId) ?? null) : null;
+      const description = invoiceLabel(inv);
       movements.push({
         date: inv.invoiceDate,
         kind: 'INVOICE',
@@ -93,10 +110,10 @@ export class ClientStatementService {
     }
     for (const r of receipts) {
       const amount = new Decimal(r.totalAmount.toString());
-      movements.push({ date: r.accountingDate, kind: 'RECEIPT', documentId: r.id, reference: r.receiptNumber, description: r.reference, debit: zero, credit: amount, sequence: 4 });
+      movements.push({ date: r.accountingDate, kind: 'RECEIPT', documentId: r.id, reference: r.receiptNumber, description: receiptLabel(r), debit: zero, credit: amount, sequence: 4 });
       if (r.postingStatus === 'REVERSED') {
         const date = reversalDate(r.reversalJournalEntryId, null) ?? legacyReceiptReversals.get(r.id) ?? r.reversedAt;
-        if (date) movements.push({ date, kind: 'RECEIPT_REVERSAL', documentId: r.id, reference: r.receiptNumber, description: r.reference, debit: amount, credit: zero, sequence: 5 });
+        if (date) movements.push({ date, kind: 'RECEIPT_REVERSAL', documentId: r.id, reference: r.receiptNumber, description: receiptLabel(r), debit: amount, credit: zero, sequence: 5 });
       }
     }
 
@@ -126,8 +143,49 @@ export class ClientStatementService {
       .filter((r) => r.postingStatus !== 'REVERSED')
       .reduce((sum, r) => sum.plus(r.unallocatedAmount.toString()), new Decimal(0));
 
+    // ST-4 — the account contract by contract, and every invoice still owed.
+    const settlement = await this.repo.settlementByInvoice(prisma, orgId, openInvoices.map((i) => i.id));
+    const summary = summariseAccount({
+      invoices: openInvoices.map((i) => ({
+        id: i.id,
+        invoiceNumber: i.invoiceNumber,
+        invoiceDate: i.invoiceDate,
+        dueDate: i.dueDate,
+        totalAmount: new Decimal(i.totalAmount.toString()),
+        outstandingAmount: new Decimal(i.outstandingAmount.toString()),
+        subtotal: new Decimal(i.subtotal.toString()),
+        retentionAmount: new Decimal(i.retentionAmount.toString()),
+        retentionReleasedAmount: new Decimal(i.retentionReleasedAmount.toString()),
+        projectId: i.projectId,
+        contractId: i.contractId,
+        sourceRetentionContractId: i.sourceRetentionContractId,
+        sourceBoqNodeId: i.sourceBoqNodeId,
+        label: i.projectId || i.contractId ? null : invoiceLabel(i),
+      })),
+      contracts: contracts.map((c) => ({ ...c, contractValue: new Decimal(c.contractValue.toString()) })),
+      projectNames,
+      receivedByInvoice: settlement.received,
+      creditedByInvoice: settlement.credited,
+      writtenOffByInvoice: settlement.writtenOff,
+      today: new Date(`${today}T00:00:00.000Z`),
+    });
+
     return {
-      client: { id: client.id, name: client.name, code: client.code ?? null },
+      client: {
+        id: client.id,
+        name: client.name,
+        code: client.code ?? null,
+        address: [client.address, client.city].filter(Boolean).join(', ') || null,
+        taxNumber: client.taxNumber ?? null,
+      },
+      organization: organization
+        ? { name: organization.name, address: organization.legalAddress ?? null, taxNumber: organization.taxRegistrationNumber ?? null }
+        : null,
+      asOf: today,
+      accounts: summary.accounts,
+      openInvoices: summary.openInvoices,
+      overdue: summary.overdue,
+      retentionHeld: summary.retentionHeld,
       from,
       to,
       openingBalance: placed.opening.toFixed(2),

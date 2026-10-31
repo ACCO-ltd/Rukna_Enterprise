@@ -227,7 +227,7 @@ describe('SupplierBillCreateForm — direct expense', () => {
     renderWithProviders(<SupplierBillCreateForm initialKind="direct" />);
 
     expect(screen.getByRole('radio', { name: /direct expense/i })).toBeChecked();
-    expect(screen.getByText(/matching doesn't apply/i)).toBeInTheDocument();
+    expect(screen.getByText(/Rent, services, utilities/i)).toBeInTheDocument();
     expect(byId('bill-purchase-order')).toBeNull();
   });
 
@@ -242,10 +242,10 @@ describe('SupplierBillCreateForm — direct expense', () => {
     expect(screen.getByText("As printed on the supplier's invoice.")).toBeInTheDocument();
   });
 
-  it('shows the lifecycle at Draft and says what saving does', () => {
+  it('shows the lifecycle at Draft, with no explanatory intro', () => {
     renderWithProviders(<SupplierBillCreateForm initialKind="direct" />);
 
-    expect(screen.getByText(/The number is assigned when you save/)).toBeInTheDocument();
+    expect(screen.queryByText(/The number is assigned when you save/)).not.toBeInTheDocument();
     expect(screen.getByText('Not saved yet')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Save bill' })).toBeInTheDocument();
   });
@@ -423,7 +423,7 @@ describe('SupplierBillCreateForm — direct expense', () => {
 
     expect(mocks.useSupplierBills).toHaveBeenLastCalledWith({ supplierId: 'sup-1' }, { enabled: true });
     expect(screen.getByText(/inv 5531 is already recorded on BILL-2026-0042/)).toBeInTheDocument();
-    expect(screen.getByText(/will not accept a second bill with this number/)).toBeInTheDocument();
+    expect(screen.getByText(/Check this is not the same invoice entered twice/)).toBeInTheDocument();
   });
 
   it('shows a 409 from the server as an error on the invoice-number field', () => {

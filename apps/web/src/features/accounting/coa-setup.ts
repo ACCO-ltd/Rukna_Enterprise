@@ -4,9 +4,9 @@ import { currentVersion } from './account-display';
 /**
  * ─── Creating a GL account ──────────────────────────────────────────────────────
  *
- * `POST /accounts` validates three things: the code is unique (409), the parent code exists
- * (404), and the DTO's own field types. It does **not** check that the subtype belongs to the
- * class, and it does **not** check that the normal balance matches the class.
+ * `POST /accounts` checks the code is unique (409), the subtype belongs to the class and the parent
+ * is an active heading of the same class (GL-C, 400), and the DTO's own field types. It does
+ * **not** check that the normal balance matches the class.
  *
  * That second one matters. A trial balance ties either way — a normal balance is only which
  * column the account's balance is expected to sit in — but get it wrong and the account's sign
@@ -62,9 +62,9 @@ export function isContraBalance(
  * LIABILITY and the enum's own inline comment calls it "liability to client pending invoice
  * allocation" — so the schema's grouping is demonstrably not a class mapping.
  *
- * The subtype picker therefore offers all of them regardless of the chosen class. Filtering on
- * a mapping that is wrong for at least one value would make a legitimate account uncreatable,
- * and the server does not check the pairing either.
+ * GL-C — these groups (not the schema's comments) are the class mapping: the server refuses a
+ * subtype outside its class (`account-rules.ts` SUBTYPES_BY_CLASS), and the picker offers only the
+ * chosen class's group.
  */
 export const ACCOUNT_SUBTYPE_GROUPS: { group: string; subtypes: string[] }[] = [
   {
@@ -116,6 +116,43 @@ export const ACCOUNT_SUBTYPE_GROUPS: { group: string; subtypes: string[] }[] = [
 ];
 
 export const ACCOUNT_SUBTYPES: string[] = ACCOUNT_SUBTYPE_GROUPS.flatMap((g) => g.subtypes);
+
+const GROUP_CLASS: Record<string, AccountClass> = {
+  assets: 'ASSET', liabilities: 'LIABILITY', equity: 'EQUITY', income: 'INCOME', costOfSales: 'COST_OF_SALES', expenses: 'EXPENSE',
+};
+
+/** The subtype groups to offer for a class; every group while no class is chosen. */
+export function subtypeGroupsFor(accountClass: AccountClass | '' | undefined) {
+  return accountClass ? ACCOUNT_SUBTYPE_GROUPS.filter((g) => GROUP_CLASS[g.group] === accountClass) : ACCOUNT_SUBTYPE_GROUPS;
+}
+
+/**
+ * GL-C — where an account can sit: an active heading of the same class, never the account itself
+ * or one under it (the server refuses the rest).
+ */
+export function headingCandidates(accounts: readonly Account[], accountClass: AccountClass | '' | undefined, self?: string): Account[] {
+  const below = new Set<string>(self ? [self] : []);
+  // Grow the set of accounts under `self` until it stops changing.
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const a of accounts) {
+      const parent = currentVersion(a)?.parentAccountId;
+      if (parent && below.has(parent) && !below.has(a.id)) {
+        below.add(a.id);
+        grew = true;
+      }
+    }
+  }
+  return accounts
+    .filter((a) => {
+      const v = currentVersion(a);
+      return (
+        !!v && a.status === 'ACTIVE' && !below.has(a.id) && (!accountClass || v.accountClass === accountClass) &&
+        !v.isPostingAllowed && !v.isControlAccount && v.controlPostingPolicy !== 'SYSTEM_ONLY'
+      );
+    })
+    .sort((a, b) => a.code.localeCompare(b.code));
+}
 
 /**
  * The control-posting policies `CreateAccountDto` accepts.

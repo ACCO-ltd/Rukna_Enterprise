@@ -1,29 +1,16 @@
 'use client';
 
 /**
- * Supplier bills — read-only list and detail (§12.8's host page).
+ * Supplier bills — the list and the bill page (SB-2).
  *
- * Sprint 4 declared these nav-disabled on #26, which was over-cautious. Only `POST /bills`
- * needs a supplier; `GET /bills` and `GET /bills/:id` work, and §12.8's Matching tab has
- * to hang off a bill detail page that exists.
- *
- * What is genuinely missing:
- *
- *  - **Creating a bill.** Tier B. `POST /bills` is reachable now that suppliers and posting
- *    profiles have endpoints, but only for bills with no purchase order attached: a bill
- *    never records a `purchaseOrderRevisionId` (A14 / #33), so a PO-linked one can never be
- *    matched, skips the match gate entirely, and leaves its commitment stranded at ACCRUED.
- *  - **Posting.** `POST /bills/:id/post` exists and needs an `apAccountCode`. The gate lives
- *    in `canPostBill` and is deliberately stricter than the server (P15).
- *
- * The supplier's name is no longer missing. `supplier-bill.repository.ts:47` selects
- * `{ id, code, name }` on both list and detail (P16, fixed) — note it omits `nameAr`, so an
- * Arabic UI shows the English name here while a purchase order shows the Arabic one (A13).
+ * The list opens on what is owed: unpaid, overdue and due-this-week totals over the grid, and
+ * views for each step a bill waits on. One New bill button; the form asks whether the bill is
+ * against a purchase order.
  */
 
 import { useMemo } from 'react';
 import Link from 'next/link';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
   Avatar,
@@ -31,14 +18,17 @@ import {
   cn,
   entityTintClass,
   StatusPill,
+  StatTile,
   EmptyState,
   type FilterValues,
   type ListFilterField,
+  DefinitionList,
+  DefinitionRow,
   DocumentTabs,
   MoneyDisplay,
+  RecordPanel,
   SectionHeader,
   SkeletonRecord,
-  SummaryRail,
   TotalsBlock,
 } from '@erp/ui';
 
@@ -70,7 +60,8 @@ import {
   billListState,
   isBillOverdue,
 } from '../bill-list-state';
-import { useSupplierBill, useSupplierBills } from '../hooks/use-procurement';
+import { useSupplierBill, useSupplierBillPayments, useSupplierBills } from '../hooks/use-procurement';
+import { useDebitNotes } from '@/features/debit-notes/debit-notes';
 import type { BillDocumentStatus, BillPostingStatus, SupplierBill } from '../types';
 import { BillDocumentHeader } from './bill-actions-bar';
 import { BillEligibilityPanel } from './bill-eligibility-panel';
@@ -84,7 +75,6 @@ import {
   useBillActivityCount,
   useBillApprovalCount,
   useBillFacts,
-  useBillSummary,
   useBillTotals,
 } from './bill-document-body';
 import { BillMatchSummary } from './bill-matching';
@@ -174,6 +164,15 @@ export function SupplierBillsList({
         { value: 'notOverdue', label: t('dueFilter.notOverdue') },
       ],
     },
+    {
+      key: 'balance',
+      type: 'select',
+      label: t('filterByBalance'),
+      options: [
+        { value: 'unpaid', label: t('balanceFilter.unpaid') },
+        { value: 'paid', label: t('balanceFilter.paid') },
+      ],
+    },
     { key: 'supplier', type: 'select', label: tc('supplier'), options: supplierOptions },
     ...(projectId
       ? []
@@ -188,6 +187,8 @@ export function SupplierBillsList({
   ];
 
   const state = (bill: SupplierBill) => billListState(bill, today);
+  const unnumbered = (bill: SupplierBill) =>
+    bill.postingStatus === 'OPENING_BALANCE' ? t('titleOpening') : t('notNumbered');
 
   const columns: GridColumn<SupplierBill>[] = [
     {
@@ -197,13 +198,15 @@ export function SupplierBillsList({
       sortable: true,
       card: 'title',
       plainValue: (bill) => [bill.billNumber, bill.supplierInvoiceNumber].filter(Boolean).join(' '),
-      exportValue: (bill) => bill.billNumber ?? tStatus('DRAFT'),
+      exportValue: (bill) => bill.billNumber ?? unnumbered(bill),
       // The document number is the row's one link — the grid wraps this cell in it.
       render: (bill) => (
         <span className="block">
-          <span className="block font-mono text-body-sm font-semibold text-brand-primary">
-            {bill.billNumber ?? tStatus('DRAFT')}
-          </span>
+          {bill.billNumber ? (
+            <span className="block font-mono text-body-sm font-semibold text-brand-primary">{bill.billNumber}</span>
+          ) : (
+            <span className="block text-body-sm font-medium text-brand-primary">{unnumbered(bill)}</span>
+          )}
           <span className="block text-caption font-normal text-muted-foreground">
             {t('supplierRef', { ref: bill.supplierInvoiceNumber })}
           </span>
@@ -316,27 +319,21 @@ export function SupplierBillsList({
     },
   ];
 
-  // Two controlled paths (D6): a PO-backed bill that auto-matches on submit — the primary —
-  // and a genuine non-PO bill (utilities, rent, one-off) that never matches.
+  // One entry point: the form's first question is whether the bill is against a purchase order (D6).
   const canCreate = can(ACCOUNTING_PERMISSIONS.managePayables);
   const createActions = canCreate ? (
-    <div className="flex flex-wrap gap-2">
-      <Button asChild variant="outline">
-        <Link href="/finance/accounting/bills/new">{t('newNonPo')}</Link>
-      </Button>
-      <Button asChild className="gap-1.5">
-        <Link href="/finance/accounting/bills/new?po=1" data-shortcut-new="">
-          <Plus size={16} aria-hidden="true" />
-          {t('newPo')}
-          <kbd
-            className="hidden rounded border border-white/40 px-1 font-mono text-micro md:inline"
-            aria-hidden="true"
-          >
-            N
-          </kbd>
-        </Link>
-      </Button>
-    </div>
+    <Button asChild className="gap-1.5">
+      <Link href="/finance/accounting/bills/new" data-shortcut-new="">
+        <Plus size={16} aria-hidden="true" />
+        {t('new')}
+        <kbd
+          className="hidden rounded border border-white/40 px-1 font-mono text-micro md:inline"
+          aria-hidden="true"
+        >
+          N
+        </kbd>
+      </Link>
+    </Button>
   ) : null;
 
   // Views (Step 2a). A count is shown only while the view's project matches the loaded one —
@@ -352,6 +349,11 @@ export function SupplierBillsList({
   };
   const builtInViews: Omit<BuiltInView, 'count'>[] = [
     { id: 'all', label: t('views.all'), state: { sort: DEFAULT_BILL_SORT } },
+    {
+      id: 'unpaid',
+      label: t('views.unpaid'),
+      state: { filters: { balance: 'unpaid' }, sort: { key: 'dueDate', direction: 'asc' } },
+    },
     {
       id: 'toApprove',
       label: t('views.toApprove'),
@@ -372,12 +374,30 @@ export function SupplierBillsList({
       label: t('views.drafts'),
       state: { filters: { status: 'DRAFT' }, sort: DEFAULT_BILL_SORT },
     },
+    { id: 'paid', label: t('views.paid'), state: { filters: { balance: 'paid' }, sort: DEFAULT_BILL_SORT } },
   ];
   const builtIns: BuiltInView[] = builtInViews.map((v) => ({ ...v, count: countFor(v.state) }));
 
-  const owedMinor = all
-    .filter((bill) => isSettleableBill(bill) && bill.postingStatus !== 'REVERSED')
-    .reduce((sum, bill) => sum + toMinorUnits(bill.outstandingAmount, 2), 0);
+  const owedMinor = all.reduce((sum, bill) => sum + Math.max(billOwesMinor(bill) ?? 0, 0), 0);
+  const weekAhead = new Date(Date.parse(today) + 7 * 86_400_000).toISOString().slice(0, 10);
+  const tile = (pick: (bill: SupplierBill) => boolean) => {
+    const rows = all.filter((bill) => (billOwesMinor(bill) ?? 0) > 0 && pick(bill));
+    return { count: rows.length, minor: rows.reduce((sum, bill) => sum + billOwesMinor(bill)!, 0) };
+  };
+  const overdueTile = tile((bill) => isBillOverdue(bill, today));
+  const weekTile = tile((bill) => !isBillOverdue(bill, today) && bill.dueDate.slice(0, 10) <= weekAhead);
+  const unpaidTile = tile(() => true);
+  const approvalCount = all.filter((bill) => bill.documentStatus === 'SUBMITTED').length;
+  const usd = (minor: number) => formatMoney(fromMinorUnits(minor, 2), 'USD') ?? '—';
+  const tiles =
+    all.length === 0 ? null : (
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <StatTile label={t('tiles.unpaid')} value={usd(unpaidTile.minor)} note={t('tiles.bills', { count: unpaidTile.count })} />
+        <StatTile label={t('tiles.overdue')} value={usd(overdueTile.minor)} note={t('tiles.bills', { count: overdueTile.count })} />
+        <StatTile label={t('tiles.dueWeek')} value={usd(weekTile.minor)} note={t('tiles.bills', { count: weekTile.count })} />
+        <StatTile label={t('tiles.toApprove')} value={String(approvalCount)} note={t('tiles.toApproveNote')} />
+      </div>
+    );
   const currencies = new Set(all.map((bill) => bill.currencyCode));
   const headerSummary =
     all.length === 0
@@ -485,6 +505,7 @@ export function SupplierBillsList({
         summary={headerSummary}
         actions={createActions ?? undefined}
       />
+      {tiles}
       {grid}
     </div>
   );
@@ -512,7 +533,19 @@ export function billMatchesFilters(
   if (filters.supplier && bill.supplierId !== filters.supplier) return false;
   if (filters.due === 'overdue' && !isBillOverdue(bill, today)) return false;
   if (filters.due === 'notOverdue' && isBillOverdue(bill, today)) return false;
+  if (filters.balance) {
+    const owed = billOwesMinor(bill);
+    if (owed === null) return false;
+    if (filters.balance === 'unpaid' && owed <= 0) return false;
+    if (filters.balance === 'paid' && owed > 0) return false;
+  }
   return true;
+}
+
+/** What a bill in the ledger still owes, in cents; null for a bill not in the ledger. */
+function billOwesMinor(bill: SupplierBill): number | null {
+  if (!isSettleableBill(bill) || bill.postingStatus === 'REVERSED' || bill.documentStatus === 'CANCELLED') return null;
+  return toMinorUnits(bill.outstandingAmount, 2);
 }
 
 // ─── Detail ──────────────────────────────────────────────────────────────────────
@@ -529,9 +562,12 @@ export function SupplierBillDetail({
 }) {
   const tc = useTranslations('procurement.common');
   const query = useSupplierBill(id);
-  const tStatusTrail = useTranslations('procurement.status');
+  const tBills = useTranslations('procurement.bills');
   useModuleTrail(
-    query.data ? (query.data.billNumber ?? tStatusTrail(query.data.documentStatus)) : undefined,
+    query.data
+      ? (query.data.billNumber ??
+          (query.data.postingStatus === 'OPENING_BALANCE' ? tBills('titleOpening') : tBills('notNumbered')))
+      : undefined,
   );
 
   if (query.isPending) {
@@ -554,9 +590,9 @@ export function SupplierBillDetail({
 }
 
 /**
- * The bill as a document (ADR-035/036): action bar, identity + facts, one notice, the body
- * tabs, totals, and the summary rail — then the purchase-order match, which is the bill's own
- * procurement concern and keeps its section.
+ * The bill page (SB-2): details, lines with totals, the payments and credits against it, then
+ * files, journal, approvals and history as tabs; the balance and the dates in the rail. The
+ * purchase-order match keeps its own section, on PO bills only.
  */
 function SupplierBillDocument({
   bill,
@@ -570,43 +606,46 @@ function SupplierBillDocument({
   const tMatch = useTranslations('procurement.matching');
   const facts = useBillFacts(bill);
   const totals = useBillTotals(bill);
-  const summary = useBillSummary(bill);
-  const lineCount = bill.lines?.length ?? 0;
   const approvalCount = useBillApprovalCount(bill);
   const activityCount = useBillActivityCount(bill);
+  const hasPoLink = Boolean(bill.purchaseOrderRevisionId ?? bill.purchaseOrderId);
+  const live = bill.documentStatus !== 'CANCELLED' && bill.documentStatus !== 'REJECTED';
 
   return (
-    <BillDocumentHeader
-      bill={bill}
-      back={back}
-      facts={facts}
-      rail={<SummaryRail title={t('summaryTitle')} rows={summary} />}
-    >
-      {/* ADR-043 Phase 2: what stands between this bill and payment, step by step. */}
-      {bill.documentStatus === 'CANCELLED' || bill.documentStatus === 'REJECTED' ? null : (
-        <BillEligibilityPanel className="mb-6" billId={bill.id} currencyCode={bill.currencyCode} />
-      )}
+    <BillDocumentHeader bill={bill} back={back} rail={<BillRail bill={bill} />}>
+      {/* What stands between this bill and payment — shown only while something does. */}
+      {live ? <BillEligibilityPanel billId={bill.id} /> : null}
+
+      <RecordPanel title={t('detailsTitle')}>
+        <dl className="grid gap-x-8 gap-y-4 text-body-sm sm:grid-cols-2">
+          {facts.map((fact, i) => (
+            <div key={i}>
+              <dt className="text-caption text-muted-foreground">{fact.label}</dt>
+              <dd className="mt-0.5 text-foreground">{fact.value}</dd>
+            </div>
+          ))}
+        </dl>
+      </RecordPanel>
+
+      <RecordPanel title={t('tabLines')} padded={false}>
+        <div className="space-y-6 pb-5">
+          <BillLinesTab bill={bill} />
+          <TotalsBlock
+            className="ms-auto max-w-sm px-5"
+            rows={totals.rows}
+            total={totals.total}
+            amountDue={isSettleableBill(bill) ? totals.amountDue : undefined}
+          />
+        </div>
+      </RecordPanel>
+
+      {isSettleableBill(bill) || bill.postingStatus === 'REVERSED' ? <BillPaymentsPanel bill={bill} /> : null}
+
       <DebitNotesPanel billId={bill.id} canManage={can(ACCOUNTING_PERMISSIONS.managePayables)} />
 
       <DocumentTabs
         label={t('sectionsLabel')}
         tabs={[
-          {
-            key: 'lines',
-            label: t('tabLines'),
-            count: lineCount,
-            content: (
-              <div className="space-y-6">
-                <BillLinesTab bill={bill} />
-                <TotalsBlock
-                  className="ms-auto max-w-sm"
-                  rows={totals.rows}
-                  total={totals.total}
-                  amountDue={isSettleableBill(bill) ? totals.amountDue : undefined}
-                />
-              </div>
-            ),
-          },
           // ADR-045: a bill recorded from a store receipt shows the buyer's photos as its evidence.
           ...(bill.evidence
             ? [
@@ -635,16 +674,125 @@ function SupplierBillDocument({
         ]}
       />
 
-      {/* Matching — the auto-match outcome (D6). BillMatchSummary self-suppresses to "not
-          applicable" for a genuine non-PO bill. The blocked-posting notice links here. */}
-      <section
-        id="bill-matching"
-        aria-labelledby="bill-matching-heading"
-        className="mt-10 scroll-mt-40 space-y-4"
-      >
-        <SectionHeader id="bill-matching-heading" title={tMatch('title')} />
-        <BillMatchSummary bill={bill} />
-      </section>
+      {/* Matching — the auto-match outcome (D6), on PO bills only. The blocked-posting notice links here. */}
+      {hasPoLink ? (
+        <section
+          id="bill-matching"
+          aria-labelledby="bill-matching-heading"
+          className="scroll-mt-40 space-y-4"
+        >
+          <SectionHeader id="bill-matching-heading" title={tMatch('title')} />
+          <BillMatchSummary bill={bill} />
+        </section>
+      ) : null}
     </BillDocumentHeader>
+  );
+}
+
+/** The rail: what the bill comes to and what is left to pay, then when each step happened. */
+function BillRail({ bill }: { bill: SupplierBill }) {
+  const t = useTranslations('procurement.bills');
+  const locale = useLocale() as 'en';
+  const payments = useSupplierBillPayments(bill.id);
+  const debitNotes = useDebitNotes(bill.id, bill.postingStatus === 'POSTED' || bill.postingStatus === 'REVERSED');
+  const settleable = isSettleableBill(bill);
+  const money = (value: string) => formatMoney(value, bill.currencyCode, locale) ?? value;
+  const creditedMinor = (debitNotes.data ?? [])
+    .filter((n) => n.status === 'POSTED')
+    .reduce((sum, n) => sum + toMinorUnits(n.amount, 2), 0);
+  const paid = payments.data;
+  const late = isBillOverdue(bill, todayWireDate());
+
+  return (
+    <>
+      <RecordPanel title={t('balanceTitle')}>
+        <DefinitionList>
+          <DefinitionRow label={t('totalAmount')} numeric>
+            {money(bill.totalAmount)}
+          </DefinitionRow>
+          {settleable ? (
+            <>
+              <DefinitionRow label={t('amountPaid')} numeric>
+                {paid ? (Number(paid.paidAmount) > 0 ? `−${money(paid.paidAmount)}` : money(paid.paidAmount)) : '…'}
+              </DefinitionRow>
+              {paid && Number(paid.pendingAmount) > 0 ? (
+                <DefinitionRow label={t('pendingPayments')} numeric>
+                  {`−${money(paid.pendingAmount)}`}
+                </DefinitionRow>
+              ) : null}
+              {creditedMinor > 0 ? (
+                <DefinitionRow label={t('creditedByDebitNotes')} numeric>
+                  {`−${money(fromMinorUnits(creditedMinor, 2))}`}
+                </DefinitionRow>
+              ) : null}
+              <DefinitionRow label={<span className="font-semibold text-foreground">{t('balanceDue')}</span>} numeric tone={late ? 'danger' : 'default'}>
+                <span className="font-semibold">{money(bill.outstandingAmount)}</span>
+              </DefinitionRow>
+            </>
+          ) : null}
+        </DefinitionList>
+      </RecordPanel>
+
+      <RecordPanel title={t('datesTitle')}>
+        <DefinitionList>
+          <DefinitionRow label={t('recorded')}>{formatDate(bill.createdAt ?? null, locale)}</DefinitionRow>
+          {bill.approvedAt ? <DefinitionRow label={t('approved')}>{formatDate(bill.approvedAt, locale)}</DefinitionRow> : null}
+          {bill.postedAt ? <DefinitionRow label={t('postedAt')}>{formatDate(bill.postedAt, locale)}</DefinitionRow> : null}
+          {bill.postingStatus === 'OPENING_BALANCE' ? <DefinitionRow label={t('postedAt')}>{t('openingBalanceCarried')}</DefinitionRow> : null}
+          {bill.reversedAt ? <DefinitionRow label={t('reversedAt')}>{formatDate(bill.reversedAt, locale)}</DefinitionRow> : null}
+          {bill.cancelledAt ? <DefinitionRow label={t('cancelledAt')}>{formatDate(bill.cancelledAt, locale)}</DefinitionRow> : null}
+          {bill.rejectedAt ? <DefinitionRow label={t('rejectedAt')}>{formatDate(bill.rejectedAt, locale)}</DefinitionRow> : null}
+        </DefinitionList>
+      </RecordPanel>
+    </>
+  );
+}
+
+type BillAllocation = NonNullable<ReturnType<typeof useSupplierBillPayments>['data']>['allocations'][number];
+
+/** Where a payment against the bill stands: posted, waiting, or no longer counting. */
+function allocationState(row: BillAllocation): 'POSTED' | 'PENDING' | 'REVERSED' | 'CANCELLED' | 'REJECTED' {
+  if (row.paymentStatus === 'CANCELLED' || row.paymentStatus === 'REJECTED') return row.paymentStatus;
+  if (row.postingStatus === 'REVERSED') return 'REVERSED';
+  return row.postingStatus === 'POSTED' ? 'POSTED' : 'PENDING';
+}
+const isVoid = (row: BillAllocation) => !['POSTED', 'PENDING'].includes(allocationState(row));
+
+/** Every payment applied to the bill, each a link to the payment. */
+function BillPaymentsPanel({ bill }: { bill: SupplierBill }) {
+  const t = useTranslations('procurement.bills');
+  const locale = useLocale() as 'en';
+  const payments = useSupplierBillPayments(bill.id);
+  const rows = payments.data?.allocations ?? [];
+
+  return (
+    <RecordPanel title={t('paymentsTitle')}>
+      {payments.isPending ? (
+        <p className="text-body-sm text-muted-foreground">…</p>
+      ) : rows.length === 0 ? (
+        <p className="text-body-sm text-muted-foreground">{t('noPayments')}</p>
+      ) : (
+        <ul className="divide-y divide-border">
+          {rows.map((row) => (
+            <li key={row.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2.5 text-body-sm">
+              <span className="min-w-0">
+                <Link href={`/finance/accounting/payments/${row.paymentId}`} className="font-mono font-medium text-brand-primary hover:underline">
+                  {row.paymentNumber ?? t('paymentUnnumbered')}
+                </Link>
+                <span className="ms-2 text-muted-foreground">{formatDate(row.paymentDate, locale)}</span>
+                {allocationState(row) !== 'POSTED' ? (
+                  <StatusPill tone={allocationState(row) === 'PENDING' ? 'progress' : 'historical'} className="ms-2">
+                    {t(`allocationState.${allocationState(row)}`)}
+                  </StatusPill>
+                ) : null}
+              </span>
+              <span className={cn('tabular-nums font-medium', isVoid(row) && 'text-muted-foreground line-through')}>
+                {formatMoney(row.allocatedAmount, bill.currencyCode, locale)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </RecordPanel>
   );
 }

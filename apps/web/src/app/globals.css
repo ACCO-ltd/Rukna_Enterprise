@@ -481,9 +481,27 @@ textarea {
     background: var(--surface) !important;
   }
 
-  /* Keep a ledger or trial-balance row whole, and repeat the header on every page. */
+  /* Keep a ledger or trial-balance row whole, and repeat the header on every page. A wide
+     statement (eight or nine money columns) fits A4 portrait at 9pt. */
   table {
     break-inside: auto;
+  }
+
+  table,
+  table * {
+    font-size: 9pt !important;
+  }
+
+  /* On paper nothing scrolls: the table is laid out to the page width, with tighter cells and
+     headers allowed to wrap, rather than clipped at the right edge. */
+  .overflow-x-auto {
+    overflow: visible !important;
+  }
+
+  th,
+  td {
+    padding-inline: 4px !important;
+    white-space: normal !important;
   }
 
   thead {

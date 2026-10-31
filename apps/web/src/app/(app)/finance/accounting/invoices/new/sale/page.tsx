@@ -1,10 +1,10 @@
-import { ManualInvoiceForm } from '@/features/accounting/components/manual-invoice-form';
+import { InvoiceNew } from '@/features/accounting/components/invoice-new';
 
-/** ADR-048 — a hand-typed invoice for a sale outside any construction contract. */
+/** ADR-048 — kept for links to the old sale form; it is now the default New invoice type. */
 export default function NewSaleInvoicePage() {
   return (
     <div className="w-full max-w-6xl">
-      <ManualInvoiceForm />
+      <InvoiceNew initialType="SALE" />
     </div>
   );
 }

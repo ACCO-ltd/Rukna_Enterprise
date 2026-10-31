@@ -7,9 +7,9 @@
  *   To pay    — award orders issued and not fully funded: release cash or pay the store.
  *   To settle — store receipts waiting to be recorded, and cash still with a buyer.
  *
- * The age is `paymentWaitingWorkingMinutes` (since payment became needed, working hours). The
- * row carries no payment state of its own — the tab says what is waiting; each row opens the
- * request's Payment section, where the one primary action is. Above the tabs, the buyer-cash
+ * The age is `paymentWaitingWorkingMinutes` (since payment became needed, working hours). Each row
+ * names the store and what the order still needs (PN-1) and opens the request's Payment section,
+ * where the one primary action is. Above the tabs, the buyer-cash
  * set-up checklist when something is missing (P14, `GET /buyer-advances/readiness`).
  */
 
@@ -19,6 +19,7 @@ import { useTranslations } from 'next-intl';
 import { EmptyState, Notice, Tabs, TabsContent, TabsList, TabsTrigger } from '@erp/ui';
 import { ArrowRight, CircleCheck, CircleDashed } from 'lucide-react';
 
+import { ListPageHeader } from '@/components/layout/list-page-header';
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
 import { formatMoney } from '@/lib/format';
 
@@ -40,9 +41,14 @@ export function PaymentsQueue({ initialQueue = 'pay' }: { initialQueue?: Payment
   const pay = useQuotationRequests({ queue: 'pay' }, { poll: true });
   const settle = useQuotationRequests({ queue: 'settle' }, { poll: true });
 
+  const waiting = (pay.data?.total ?? 0) + (settle.data?.total ?? 0);
   return (
-    <div className="space-y-3">
-      <p className="max-w-prose text-body-sm text-muted-foreground">{t('subtitle')}</p>
+    <div className="space-y-4">
+      <ListPageHeader
+        eyebrow={t('eyebrow')}
+        title={t('title')}
+        summary={pay.data && settle.data ? t('summary', { pay: pay.data.total, settle: settle.data.total, count: waiting }) : undefined}
+      />
       <BuyerCashSetup />
       <Tabs value={queue} onValueChange={(next) => setQueue(next as PaymentQueue)}>
         <TabsList>
@@ -125,15 +131,21 @@ function QueueGrid({ query, queue }: { query: ReturnType<typeof useQuotationRequ
       header: tList('columns.request'),
       sticky: true,
       card: 'title',
-      plainValue: (row) => `${row.mr.number} ${row.mr.title ?? ''} ${row.number}`,
+      plainValue: (row) => `${row.number} ${row.mr.number} ${row.mr.title ?? ''} ${row.payee ?? ''}`,
       render: (row) => (
         <span className="block min-h-11 min-w-0">
-          <span className="block font-semibold text-brand-primary">{row.mr.number}</span>
+          <span className="block font-mono font-semibold text-brand-primary">{row.number}</span>
           <span className="block max-w-[20rem] truncate text-caption font-normal text-muted-foreground">
-            {[row.mr.title, row.number].filter(Boolean).join(' · ')}
+            {[row.mr.number, row.mr.title].filter(Boolean).join(' · ')}
           </span>
         </span>
       ),
+    },
+    {
+      key: 'payee',
+      header: t('columns.payee'),
+      plainValue: (row) => row.payee ?? '',
+      render: (row) => <span className="block max-w-[14rem] truncate font-medium">{row.payee ?? '—'}</span>,
     },
     {
       key: 'project',
@@ -154,16 +166,23 @@ function QueueGrid({ query, queue }: { query: ReturnType<typeof useQuotationRequ
   if (moneyVisible) {
     columns.push({
       key: 'amount',
-      header: t('columns.awarded'),
+      header: t(queue === 'pay' ? 'columns.stillToPay' : 'columns.awarded'),
       numeric: true,
       card: 'amount',
-      plainValue: (row) => (row.awardedTotal == null ? null : Number(row.awardedTotal)),
-      render: (row) =>
-        row.awardedTotal == null ? (
-          <span className="text-muted-foreground">—</span>
-        ) : (
-          <span className="tabular-nums">{formatMoney(row.awardedTotal, 'USD')}</span>
-        ),
+      plainValue: (row) => Number((queue === 'pay' ? row.remainingToPay : row.awardedTotal) ?? NaN) || null,
+      render: (row) => {
+        const amount = queue === 'pay' ? (row.remainingToPay ?? row.awardedTotal) : row.awardedTotal;
+        if (amount == null) return <span className="text-muted-foreground">—</span>;
+        const partly = queue === 'pay' && row.awardedTotal != null && row.remainingToPay != null && row.remainingToPay !== row.awardedTotal;
+        return (
+          <span className="block tabular-nums">
+            <span className="font-semibold">{formatMoney(amount, 'USD')}</span>
+            {partly ? (
+              <span className="block text-caption text-muted-foreground">{t('ofTotal', { total: formatMoney(row.awardedTotal!, 'USD') ?? '' })}</span>
+            ) : null}
+          </span>
+        );
+      },
     });
   }
 

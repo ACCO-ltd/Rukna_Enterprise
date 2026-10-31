@@ -237,6 +237,7 @@ export class AwardPaymentRepository {
         status: true,
         allowsPayments: true,
         allowsReceipts: true,
+        kind: true,
         glAccountId: true,
         glAccount: { select: { code: true } },
         signatories: { where: { isActive: true }, select: { id: true } },

@@ -38,7 +38,7 @@ beforeAll(async () => {
   billId = bill.id;
   const pay = (amount: number, allocated: number) => svc.supplierPaymentService.create(env.identity, {
     supplierId: env.supplierId, bankAccountId: env.bankAccountId, paymentDate: day(), currencyCode: 'USD', totalAmount: amount,
-    paymentMethod: 'BANK_TRANSFER', bankReference: 'TT-1', allocations: [{ supplierBillId: billId, amount: allocated }],
+    paymentMethod: 'BANK_TRANSFER', bankReference: `TT-${Math.random().toString(36).slice(2, 8)}`, allocations: [{ supplierBillId: billId, amount: allocated }],
   } as never);
   const paid = await pay(700, 600); // 600 applied, 100 paid ahead
   await svc.supplierPaymentService.approve(other(), paid.id);
@@ -63,6 +63,8 @@ it('SST-01: the closing balance is what is owed, and ties to open bills less una
   expect(s.unapplied).toBe('100.00');
   expect(s.pendingPayments).toBe('100.00');
   expect(sum(s.aging) - Number(s.unapplied)).toBe(Number(s.closingBalance));
+  // SS-1 — the open bill with what settled it and what is still owed (the unposted 100 still counts).
+  expect(s.openBills).toEqual([expect.objectContaining({ number: expect.any(String), total: '1000.00', settled: '600.00', balance: '400.00' })]);
 });
 
 it('SST-02: a reversed payment shows paid and reversed, and the bill is owed again', async () => {

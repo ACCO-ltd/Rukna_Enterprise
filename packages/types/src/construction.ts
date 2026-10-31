@@ -2372,6 +2372,10 @@ export interface ManualInvoiceInput {
   /** Omitted = the organisation's default sales tax code. */
   taxCodeId?: string;
   paymentTerms?: string;
+  /** The client's purchase order or job number, printed as "Your Ref."; blank = none. */
+  clientReference?: string;
+  /** A note to the client printed on this invoice alone; blank = none. */
+  notes?: string;
   lines: ManualInvoiceLineInput[];
 }
 

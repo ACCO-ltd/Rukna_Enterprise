@@ -80,43 +80,48 @@ it('MJ-01: full lifecycle DRAFT→SUBMIT→APPROVE→POST produces a POSTED GL e
 });
 
 // ─── MJ-02 ────────────────────────────────────────────────────────────────────
-it('MJ-02: posting an unbalanced draft is rejected', async () => {
-  // Create an intentionally unbalanced journal (will be rejected at post time)
-  const draft = await svc.manualJournalService.create(env.identity, {
-    accountingDate: '2025-01-15',
-    description:    'Unbalanced MJ-02',
-    currencyCode:   'USD',
-    lines: [
-      { accountId: env.accounts.revId, debitAmount:  1000 },
-      { accountId: env.accounts.expId, creditAmount:  999 },
-    ],
-  });
-
-  await svc.manualJournalService.submit(env.identity, draft.id);
-  await svc.manualJournalService.approve(env.identity, { journalId: draft.id, approved: true });
-
+it('MJ-02: an unbalanced journal is refused when it is saved (GL-J), not left for posting', async () => {
   await expect(
-    svc.manualJournalService.post(env.identity, draft.id),
-  ).rejects.toThrow(/balance|∑/i);
+    svc.manualJournalService.create(env.identity, {
+      accountingDate: '2025-01-15',
+      description:    'Unbalanced MJ-02',
+      currencyCode:   'USD',
+      lines: [
+        { accountId: env.accounts.revId, debitAmount:  1000 },
+        { accountId: env.accounts.expId, creditAmount:  999 },
+      ],
+    }),
+  ).rejects.toMatchObject({ response: { errorCode: 'JOURNAL_UNBALANCED' } });
 });
 
 // ─── MJ-03 ────────────────────────────────────────────────────────────────────
 it('MJ-03: MANUAL origin is blocked from posting to a SYSTEM_ONLY control account', async () => {
-  const draft = await svc.manualJournalService.create(env.identity, {
-    accountingDate: '2025-01-15',
-    description:    'MJ-03 control account test',
-    currencyCode:   'USD',
-    lines: [
-      { accountId: env.accounts.ctrlId, debitAmount:  100 },
-      { accountId: env.accounts.expId,  creditAmount: 100 },
-    ],
-  });
-
-  await svc.manualJournalService.submit(env.identity, draft.id);
-  await svc.manualJournalService.approve(env.identity, { journalId: draft.id, approved: true });
-
+  const lines = [
+    { accountId: env.accounts.ctrlId, debitAmount:  100 },
+    { accountId: env.accounts.expId,  creditAmount: 100 },
+  ];
+  // Refused when the journal is saved (GL-J) ...
   await expect(
-    svc.manualJournalService.post(env.identity, draft.id),
+    svc.manualJournalService.create(env.identity, {
+      accountingDate: '2025-01-15', description: 'MJ-03 control account test', currencyCode: 'USD', lines,
+    }),
+  ).rejects.toMatchObject({ response: { errorCode: 'ACCOUNT_SYSTEM_ONLY' } });
+
+  // ... and by the posting engine, whatever reaches it with a MANUAL origin.
+  const { Decimal } = await import('@prisma/client/runtime/library');
+  await expect(
+    prisma.$transaction((tx) =>
+      svc.postingService.post(
+        {
+          organizationId: env.orgId, accountingDate: new Date('2025-01-15'), documentDate: new Date('2025-01-15'),
+          description: 'MJ-03 engine', currencyCode: 'USD', eventType: 'MANUAL-MJ03', sourceDocumentType: 'MANUAL_JOURNAL',
+          sourceDocumentId: `mj03-${Date.now()}`, journalCategory: 'GENERAL', entryPurpose: 'NORMAL', postingOrigin: 'MANUAL',
+          createdBy: env.identity.userId,
+          lines: lines.map((l) => ({ accountId: l.accountId, debitAmount: new Decimal(l.debitAmount ?? 0), creditAmount: new Decimal(l.creditAmount ?? 0) })),
+        } as never,
+        tx as never,
+      ),
+    ),
   ).rejects.toThrow(/system-only|control account|manual posting/i);
 });
 

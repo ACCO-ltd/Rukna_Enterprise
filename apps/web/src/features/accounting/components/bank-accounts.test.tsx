@@ -113,15 +113,26 @@ describe('BankAccounts list', () => {
   it('lists each account with its bank and name', () => {
     renderWithProviders(<BankAccounts />);
 
-    expect(screen.getByText('Salaam Bank')).toBeInTheDocument();
-    expect(screen.getByText('Main Operating')).toBeInTheDocument();
+    expect(screen.getAllByText('Salaam Bank · ****4821').length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('link', { name: 'Main Operating' })[0]).toHaveAttribute('href', '/finance/accounting/bank-accounts/bank-1');
+  });
+
+  it('adds up what is held by kind of account (BK)', () => {
+    mocks.useBankAccounts.mockReturnValue({
+      data: [{ ...BANK, bookBalance: '1000.00' }, { ...BANK, id: 'bank-2', kind: 'CASH', accountNumber: 'CASH-1', bookBalance: '250.00' }],
+      isPending: false,
+      isError: false,
+    });
+    renderWithProviders(<BankAccounts />);
+    expect(screen.getByText('$1,250.00 across 2 accounts')).toBeInTheDocument();
+    expect(screen.getByText('Cash boxes').closest('div')?.parentElement).toHaveTextContent('$250.00');
   });
 
   /** A full account number on a list screen is a detail nobody needs and everyone can screenshot. */
   it('masks the account number to its last four digits', () => {
     renderWithProviders(<BankAccounts />);
 
-    expect(screen.getByText('****4821')).toBeInTheDocument();
+    expect(screen.getAllByText(/\*\*\*\*4821/).length).toBeGreaterThan(0);
     expect(screen.queryByText('000123454821')).not.toBeInTheDocument();
   });
 
@@ -130,22 +141,21 @@ describe('BankAccounts list', () => {
     renderWithProviders(<BankAccounts />);
 
     expect(screen.getAllByText('$1,250.00').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Never').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Not reconciled yet').length).toBeGreaterThan(0);
   });
 
-  it('says "Not recorded" instead of masking a placeholder number (B-1)', () => {
+  it('does not mask a placeholder number as if it were real (B-1)', () => {
     mocks.useBankAccounts.mockReturnValue({ data: [{ ...BANK, accountNumber: 'Not recorded (10100)' }], isPending: false, isError: false });
     renderWithProviders(<BankAccounts />);
 
-    expect(screen.getAllByText('Not recorded').length).toBeGreaterThan(0);
-    expect(screen.queryByText('****100)')).not.toBeInTheDocument();
+    expect(screen.queryByText(/\*\*\*\*100\)/)).not.toBeInTheDocument();
   });
 
   it('explains an empty list rather than showing a bare table', () => {
     mocks.useBankAccounts.mockReturnValue({ data: [], isPending: false, isError: false });
     renderWithProviders(<BankAccounts />);
 
-    expect(screen.getByText('No bank account is configured.')).toBeInTheDocument();
+    expect(screen.getByText('No bank or cash account yet.')).toBeInTheDocument();
   });
 });
 
@@ -153,7 +163,8 @@ describe('configure form', () => {
   async function openForm() {
     const user = userEvent.setup();
     renderWithProviders(<BankAccounts />, { permissions: ['manage:accounting'] });
-    await user.click(screen.getByRole('button', { name: 'New Bank Account' }));
+    await user.click(screen.getByRole('button', { name: /New account/ }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Bank account' }));
     return user;
   }
 
@@ -175,7 +186,7 @@ describe('configure form', () => {
 
     await user.click(screen.getByLabelText('Receiving money'));
     await user.click(screen.getByLabelText('Paying money'));
-    await user.click(screen.getByRole('button', { name: 'Configure account' }));
+    await user.click(screen.getByRole('button', { name: 'Save account' }));
 
     expect(screen.getByText(/will not appear anywhere/i)).toBeInTheDocument();
     expect(mutate).not.toHaveBeenCalled();
@@ -219,18 +230,19 @@ describe('cash box / EVC float presets', () => {
     expect(within(dialog).getByLabelText('Account number')).toHaveValue('CASH-BOX');
     expect(within(dialog).getByText(/Keep this account without signatories/)).toBeInTheDocument();
 
-    await userEvent.setup().click(within(dialog).getByRole('button', { name: 'Configure account' }));
+    await userEvent.setup().click(within(dialog).getByRole('button', { name: 'Save account' }));
     expect(mutate).toHaveBeenCalledWith(
       expect.objectContaining({ bankName: 'Cash box', glAccountCode: '10900', allowsPayments: true }),
       expect.anything(),
     );
   });
 
-  it('offers the presets beside New Bank Account, and explains where buyer cash comes from', async () => {
+  it('offers a cash box and an EVC float from the one New account button', async () => {
     const user = userEvent.setup();
     renderWithProviders(<BankAccounts />, { permissions: ['manage:accounting'] });
-    expect(screen.getByText(/Buyer cash for purchases is handed out only from an account with no signatories/)).toBeInTheDocument();
-    await user.click(screen.getAllByRole('button', { name: 'Add EVC float' })[0]!);
+    await user.click(screen.getByRole('button', { name: /New account/ }));
+    expect(await screen.findByRole('menuitem', { name: 'Cash box' })).toBeInTheDocument();
+    await user.click(screen.getByRole('menuitem', { name: 'Add EVC float' }));
     const dialog = await screen.findByRole('dialog', { name: 'Add EVC float' });
     expect(within(dialog).getByLabelText('Bank name')).toHaveValue('EVC Plus');
   });
@@ -238,24 +250,5 @@ describe('cash box / EVC float presets', () => {
   it('ignores the preset for someone who cannot add accounts', () => {
     renderWithProviders(<BankAccounts preset="cash-box" />, { permissions: ['view:accounting'] });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-  });
-});
-
-/** ADR-039 — the signatories panel is a FormDialog, not a side sheet. */
-describe('signatories dialog', () => {
-  it('opens as a dialog named for the panel and the account, and closes from its footer', async () => {
-    const user = userEvent.setup();
-    renderWithProviders(<BankAccounts />, { permissions: ['manage:accounting'] });
-
-    await user.click(screen.getByRole('button', { name: 'Signatories' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Signatories' });
-    expect(within(dialog).getByText('Main Operating')).toBeInTheDocument();
-    expect(within(dialog).getByText('Amina Ali')).toBeInTheDocument();
-
-    const close = within(dialog)
-      .getAllByRole('button', { name: 'Close' })
-      .find((button) => button.textContent === 'Close');
-    await user.click(close!);
-    expect(screen.queryByRole('dialog', { name: 'Signatories' })).not.toBeInTheDocument();
   });
 });

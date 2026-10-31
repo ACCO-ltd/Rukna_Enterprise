@@ -253,7 +253,15 @@ export interface PayDraft {
   shape: PaymentShape;
   bills: Array<{ id: string; number: string; outstanding: Money | null }>;
   remainingToFund: Money | null;
-  accounts: Array<{ bankAccountId: string; name: string; glCode?: string; underDualControl: boolean; lastUsed: boolean }>;
+  accounts: Array<{
+    bankAccountId: string;
+    name: string;
+    glCode?: string;
+    /** PN-2 — the kind of account; the server refuses a method that does not suit it. */
+    kind?: 'BANK' | 'CASH' | 'MOBILE_WALLET' | null;
+    underDualControl: boolean;
+    lastUsed: boolean;
+  }>;
   methods: SupplierPaymentMethod[];
   defaultPaymentDate: ApiDate;
   bandHint?: BandHint | null;

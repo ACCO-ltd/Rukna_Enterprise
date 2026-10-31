@@ -9,6 +9,7 @@ import type {
 } from '../application/ports/accounting-posting.port.js';
 import { PeriodValidator } from '../application/validators/period.validator.js';
 import { DoubleEntryValidator } from '../application/validators/double-entry.validator.js';
+import { isHeading } from '../domain/account-rules.js';
 import { ControlAccountValidator } from '../application/validators/control-account.validator.js';
 import { DocumentSequenceRepository } from './document-sequence.repository.js';
 import { JournalRepository } from './journal.repository.js';
@@ -74,8 +75,20 @@ export class AccountingPostingService implements IAccountingPostingPort {
 
         const account = await tx.account.findUniqueOrThrow({
           where: { id: line.accountId },
-          select: { code: true },
+          select: { code: true, status: true },
         });
+        // GL-J — a heading only adds up the accounts under it, and an inactive account is closed
+        // to new entries (accounting-round2-architecture.md: an INACTIVE account rejects new
+        // postings). Nothing may post to either, whatever the source: a balance on a heading is
+        // invisible in every report that rolls up from its children (`isHeading` says why "posting
+        // allowed" off is not enough). A reversal undoes an entry already there, and must be able to.
+        const heading = isHeading(version);
+        if (!command.reversalOfJournalEntryId && (heading || account.status !== 'ACTIVE')) {
+          throw new UnprocessableEntityException({
+            errorCode: 'ACCOUNT_NOT_POSTABLE',
+            message: `${account.code} ${version.name} ${heading ? 'is a heading' : 'is inactive'} and cannot take postings.`,
+          });
+        }
 
         return {
           lineNumber: idx + 1,

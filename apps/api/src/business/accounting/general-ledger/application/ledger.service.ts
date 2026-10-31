@@ -1,7 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import type { RequestIdentity } from '@erp/types';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
+import { parseDateOnly } from '../../accounting-core/domain/calendar-day.js';
 
 export interface LedgerLineDto {
   journalEntryId: string;
@@ -24,6 +25,8 @@ export interface AccountLedgerResult {
   accountId: string;
   accountCode: string;
   accountName: string;
+  /** GL-L — which side the account normally sits on; balances here are always debits less credits. */
+  normalBalance: 'DEBIT' | 'CREDIT';
   openingBalance: string;
   periodDebit: string;
   periodCredit: string;
@@ -71,15 +74,26 @@ export class LedgerService {
         versions: { orderBy: { effectiveFrom: 'desc' }, take: 1 },
       },
     });
-    if (!account) throw new NotFoundException(`Account ${dto.accountId} not found`);
+    if (!account) throw new NotFoundException({ errorCode: 'ACCOUNT_NOT_FOUND', message: 'This account does not exist.' });
 
-    const from = new Date(dto.fromDate);
-    const to = new Date(dto.toDate);
+    // GL-L — real calendar days, in order (`new Date('2026-02-31')` rolls into March).
+    const from = dto.fromDate?.length >= 10 ? parseDateOnly(dto.fromDate) : null;
+    const to = dto.toDate?.length >= 10 ? parseDateOnly(dto.toDate) : null;
+    if (!from || !to) throw new BadRequestException({ errorCode: 'DATE_INVALID', message: 'fromDate and toDate must be real dates written YYYY-MM-DD.' });
+    if (from > to) throw new BadRequestException({ errorCode: 'DATE_RANGE_INVALID', message: 'The start date is after the end date.' });
+
+    // The same dimensions narrow the opening balance and the lines, or the running balance would
+    // start from the whole account and add one project's lines to it.
+    const dimensionFilter: Record<string, string> = {};
+    if (dto.projectId) dimensionFilter.projectId = dto.projectId;
+    if (dto.departmentId) dimensionFilter.departmentId = dto.departmentId;
+    if (dto.costCenterId) dimensionFilter.costCenterId = dto.costCenterId;
 
     // Opening balance: all POSTED lines before fromDate
     const openingAgg = await prisma.journalLine.aggregate({
       where: {
         accountId: dto.accountId,
+        ...dimensionFilter,
         entry: {
           organizationId: orgId,
           status: 'POSTED',
@@ -94,10 +108,6 @@ export class LedgerService {
     const openingBalance = openingDebit.minus(openingCredit);
 
     // Period journal lines (with dimension filters)
-    const dimensionFilter: Record<string, string> = {};
-    if (dto.projectId) dimensionFilter.projectId = dto.projectId;
-    if (dto.departmentId) dimensionFilter.departmentId = dto.departmentId;
-    if (dto.costCenterId) dimensionFilter.costCenterId = dto.costCenterId;
 
     const lines = await prisma.journalLine.findMany({
       where: {
@@ -161,6 +171,7 @@ export class LedgerService {
       accountId: account.id,
       accountCode: account.code,
       accountName: account.versions[0]?.name ?? account.code,
+      normalBalance: account.normalBalance,
       openingBalance: openingBalance.toFixed(2),
       periodDebit: periodDebit.toFixed(2),
       periodCredit: periodCredit.toFixed(2),

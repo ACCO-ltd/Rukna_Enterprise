@@ -81,4 +81,13 @@ describe('invoiceSummary (Step 2c)', () => {
     expect(s.mixedCurrencies).toBe(true);
     expect(s.currency).toBeNull();
   });
+
+  it('CI-3: collected counts cash received, not credit notes or write-offs', () => {
+    const s = invoiceSummary(
+      [inv({ totalAmount: '1400.00', outstandingAmount: '397.00', amountPaid: '1000.00', amountWrittenOff: '3.00' })],
+      TODAY,
+    );
+    expect(s.collected.collectedMinor).toBe(100_000);
+    expect(s.outstanding).toEqual({ count: 1, outstandingMinor: 39_700 });
+  });
 });

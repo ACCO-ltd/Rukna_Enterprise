@@ -67,6 +67,9 @@ export interface QuotationRequestRow {
    * payment state, store or remaining amount — the queue itself says what is waiting.
    */
   paymentWaitingWorkingMinutes?: number;
+  /** PN-1 — pay / settle queues: the store or supplier on the order, and what the order still needs. */
+  payee?: string | null;
+  remainingToPay?: Money | null;
 }
 
 /** `GET /procurement/quotation-requests` envelope (spec §0a). */

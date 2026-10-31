@@ -36,7 +36,7 @@ export function AccountingCycleStrip() {
   const periodAction = currentPeriod ? null : noPeriodAction(guide.data);
 
   return (
-    <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-panel border border-border bg-surface-subtle px-4 py-2 text-body-sm">
+    <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-panel border border-border bg-surface-subtle px-4 py-2 text-body-sm print:hidden">
       <span className="text-micro font-semibold uppercase tracking-wider text-muted-foreground">
         {t('label')}
       </span>

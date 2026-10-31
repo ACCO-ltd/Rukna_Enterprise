@@ -1,6 +1,8 @@
 import type { DownloadUrlResponse } from '@/features/files/api/files-api';
 import { apiClient } from '@/lib/api-client';
 
+import type { ReceiptPaymentMethod } from '@/lib/api-types';
+
 import type { Receipt, ReceiptAllocation, ReceiptDetail } from '../types';
 
 /**
@@ -20,8 +22,16 @@ export interface CreateReceiptPayload {
   receiptDate: string;
   amount: string;
   currency: string;
+  paymentMethod: ReceiptPaymentMethod;
   reference?: string;
   notes?: string;
+  /** PM-1 — the method's proof (see `PROOF_FIELDS`). */
+  instrumentNumber?: string;
+  issuer?: string;
+  instrumentDate?: string;
+  payerName?: string;
+  payerAccount?: string;
+  receivedBy?: string;
 }
 
 /** One invoice allocation line — `amount` is a JS number (server DTO uses `@IsNumber`). */
@@ -31,15 +41,14 @@ export interface ReceiptAllocationInput {
 }
 
 /**
- * Body for `POST /customer-receipts/:id/post`.
- *
- * The bank account (which account received the cash) is chosen explicitly via its GL code. AR
- * control and unapplied-cash accounts are resolved server-side by role (ACC-POST-001), so no
- * other account codes are sent. Optional `allocations` settle invoices at post time; anything
- * left over lands in Unapplied and can be allocated later.
+ * Body for `POST /customer-receipts/:id/post`: the registered bank account the money landed in
+ * (RC-3; AR and unapplied-cash accounts resolve server-side by role, ACC-POST-001) and optional
+ * `allocations` settling invoices at post time; the rest stays on account.
  */
 export interface PostReceiptPayload {
-  bankAccountCode: string;
+  bankAccountId: string;
+  /** PM-4 — the day a cheque on hand is deposited; it posts on that date. */
+  depositDate?: string;
   allocations?: ReceiptAllocationInput[];
 }
 
@@ -117,6 +126,14 @@ export function reverseAllocation(receiptId: string, allocationId: string): Prom
     `/customer-receipts/${receiptId}/allocations/${allocationId}/reverse`,
     { method: 'POST', body: JSON.stringify({}) },
   );
+}
+
+/** `POST /customer-receipts/:id/cancel` — RC-5: set aside a receipt that was never posted. */
+export function cancelReceipt(receiptId: string, payload: { reason: string }): Promise<ReceiptDetail> {
+  return apiClient<ReceiptDetail>(`/customer-receipts/${receiptId}/cancel`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
 }
 
 /**

@@ -23,6 +23,10 @@ export const WHATSAPP_TEMPLATE_BODIES: Record<MessagePurpose, string> = {
     'Hello {{1}}, this is a reminder from {{5}} that invoice {{2}} for {{3}} is due on {{4}}. If you have already paid, please ignore this message. Thank you.',
   OVERDUE_REMINDER:
     'Hello {{1}}, invoice {{2}} from {{5}} for {{3}} was due on {{4}} and is now overdue. Please arrange payment, or reply to this message if there is a problem with the invoice.',
+  STATEMENT:
+    'Hello {{1}}, please find attached your statement of account from {{4}} as of {{3}}. The balance due is {{2}}. If anything on it does not match your records, reply to this message.',
+  SUPPLIER_STATEMENT:
+    'Hello {{1}}, please find attached our record of your account with {{4}} as of {{3}}. Our books show {{2}} owed to you. If it does not match your statement, reply to this message.',
   // ADR-044 phase 2 — staff alerts (Somali; registered at Meta under language `en`).
   QUOTE_READY:
     'Codsiga quotation-ka {{1}} ee {{2}} (mashruuca {{3}}): {{4}} quotation ayaa diyaar ah. Fadlan dooro dukaanka laga iibsanayo.',

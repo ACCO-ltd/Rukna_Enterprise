@@ -165,11 +165,12 @@ export const NAV_DOMAINS: NavDomain[] = [
       // Step 6 — statement-to-ledger matching. The older subledger-to-GL check keeps its route, now
       // named for what it is.
       { href: '/finance/accounting/bank-reconciliation', labelKey: 'bankReconciliation', iconKey: 'check-circle', groupKey: 'banking' },
-      { href: '/finance/accounting/reconciliation', labelKey: 'reconciliation', iconKey: 'clipboard', groupKey: 'ledger' },
       // General Ledger
       { href: '/finance/accounting/journals', labelKey: 'journals', iconKey: 'book-open', groupKey: 'ledger' },
       { href: '/finance/accounting/chart-of-accounts', labelKey: 'chartOfAccounts', iconKey: 'list', groupKey: 'ledger' },
       { href: '/finance/accounting/ledger', labelKey: 'accountLedger', iconKey: 'clipboard', groupKey: 'ledger' },
+      // GL-L — do AR and AP agree with their open invoices and bills.
+      { href: '/finance/accounting/reconciliation', labelKey: 'reconciliation', iconKey: 'clipboard', groupKey: 'ledger' },
       // Reports
       { href: '/finance/accounting/trial-balance', labelKey: 'trialBalance', iconKey: 'trending-up', groupKey: 'reports' },
       { href: '/finance/accounting/balance-sheet', labelKey: 'balanceSheet', iconKey: 'trending-up', groupKey: 'reports' },

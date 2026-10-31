@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { describeReference } from '../domain/supplier-payment-rules.js';
 import { Document, Page, Text, View, renderToBuffer } from '@react-pdf/renderer';
 
 import {
@@ -79,7 +80,7 @@ export function RemittanceDocument({ input }: { input: RemittanceDocumentInput }
   ];
   const facts = [
     input.bankAccountLabel ? `Paid from ${input.bankAccountLabel}` : null,
-    input.bankReference ? `Bank reference: ${input.bankReference}` : null,
+    input.bankReference ? describeReference(input.paymentMethod, input.bankReference) : null,
   ].filter((line): line is string => line !== null);
 
   const rows = [

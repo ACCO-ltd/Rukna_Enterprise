@@ -10,22 +10,17 @@ import {
   Button,
   Combobox,
   DatePicker,
-  EmptyState,
   FormActionBar,
   FormField,
-  FormGroup,
   Input,
-  LifecycleStepper,
   LineItemsEditor,
-  RadioGroup,
   TotalsBlock,
   type LineColumn,
 } from '@erp/ui';
-import { ArrowLeft, FileBadge, Flag, ListPlus, Receipt } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { FormErrorSummary, type FormFieldError } from '@/components/form-error-summary';
-import { useModuleTrail } from '@/components/layout/module-chrome';
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { useCreateSeparateChargeInvoice } from '@/features/commercial/hooks/use-commercial';
 import { PrepareInvoiceDialog } from '@/features/commercial/components/prepare-invoice-dialog';
@@ -43,7 +38,6 @@ import {
 } from './invoice-tax-field';
 import { invoiceKeys, useGenerateInvoice } from '../hooks/use-invoices';
 import {
-  INVOICE_SOURCE_KINDS,
   useInvoiceSources,
   useProjectCommercialSummary,
   type InvoiceSourceKind,
@@ -73,18 +67,10 @@ import {
  *                       where Issue approves, numbers and posts in one step.
  */
 
-const LIFECYCLE_KEYS = ['DRAFT', 'APPROVED', 'POSTED'] as const;
 const PAYMENT_TERMS_MAX = 100;
 const LIST_HREF = '/finance/accounting/invoices';
 
-const KIND_ICONS: Record<InvoiceSourceKind, React.ReactNode> = {
-  IPC: <FileBadge size={16} />,
-  INSTALLMENT: <Flag size={16} />,
-  SEPARATE_CHARGE: <ListPlus size={16} />,
-};
-
 const FIELD_IDS = {
-  kind: 'invoice-kind-IPC',
   project: 'invoice-project',
   source: 'invoice-source',
   invoiceDate: 'invoice-date',
@@ -100,16 +86,21 @@ interface SourceLine {
   currency: string | null;
 }
 
-export function InvoiceCreate() {
+export function InvoiceCreate({
+  kind,
+  typeSwitch,
+}: {
+  /** What is billed — chosen on the New invoice type switch. */
+  kind: InvoiceSourceKind;
+  typeSwitch?: React.ReactNode;
+}) {
   const t = useTranslations('accounting.invoices.create');
   const tCommon = useTranslations('common');
   const router = useRouter();
   const queryClient = useQueryClient();
   const { can } = usePermissions();
-  useModuleTrail(t('title'));
 
   const today = new Date().toISOString().slice(0, 10);
-  const [kind, setKind] = useState<InvoiceSourceKind | ''>('');
   const [projectId, setProjectId] = useState('');
   const [sourceId, setSourceId] = useState('');
   const [invoiceDate, setInvoiceDate] = useState(today);
@@ -135,7 +126,7 @@ export function InvoiceCreate() {
   const mayCreate = can(ACCOUNTING_PERMISSIONS.manageReceivables);
   const isMilestone = kind === 'INSTALLMENT';
   // The milestone path chooses its tax inside the Prepare invoice dialog.
-  const tax = useInvoiceTaxChoice({ enabled: mayCreate && kind !== '' && !isMilestone, invoiceDate });
+  const tax = useInvoiceTaxChoice({ enabled: mayCreate && !isMilestone, invoiceDate });
   const taxError = useInvoiceTaxErrorMessage();
   const financialsVisible = summary.data?.financialsVisible ?? true;
 
@@ -172,7 +163,6 @@ export function InvoiceCreate() {
 
   // ── Validation ─────────────────────────────────────────────────────────────
   const errors: Partial<Record<FieldKey, string>> = {};
-  if (!kind) errors.kind = t('errors.kindRequired');
   if (!projectId) errors.project = t('errors.projectRequired');
   if (!sourceId) errors.source = t('errors.sourceRequired');
   if (!isMilestone) {
@@ -183,9 +173,8 @@ export function InvoiceCreate() {
   const shown = attempted ? errors : {};
 
   const fieldLabels: Record<FieldKey, string> = {
-    kind: t('kindLabel'),
     project: t('project'),
-    source: kind ? t(`source.${kind}.label`) : t('kindLabel'),
+    source: t(`source.${kind}.label`),
     invoiceDate: t('invoiceDate'),
     dueDate: t('dueDate'),
     terms: t('terms'),
@@ -196,7 +185,7 @@ export function InvoiceCreate() {
     message: shown[key] as string,
   }));
 
-  const isDirty = kind !== '' || projectId !== '' || paymentTerms !== '';
+  const isDirty = projectId !== '' || paymentTerms !== '';
 
   // ── Commands ───────────────────────────────────────────────────────────────
   const openInvoice = (id: string) => router.push(`${LIST_HREF}/${id}`);
@@ -204,7 +193,7 @@ export function InvoiceCreate() {
   async function handleSave() {
     setAttempted(true);
     setSaveError(null);
-    if (Object.keys(errors).length > 0 || !kind) return;
+    if (Object.keys(errors).length > 0) return;
 
     if (kind === 'INSTALLMENT') {
       setPreparing(true);
@@ -273,13 +262,9 @@ export function InvoiceCreate() {
     },
   ];
 
-  const sourceHint = (() => {
-    if (!projectId) return t('chooseProjectFirst');
-    if (kind && !sources.isLoading && !sources.isError && sources.options.length === 0) {
-      return t(`source.${kind}.empty`);
-    }
-    return t('sourceHint');
-  })();
+  // Only said when it changes what the reader does: nothing to bill on this project.
+  const sourceHint =
+    projectId && !sources.isLoading && !sources.isError && sources.options.length === 0 ? t(`source.${kind}.empty`) : null;
 
   const clientName = projectId ? (summary.data?.mainContract?.clientName ?? '') : '';
 
@@ -304,7 +289,7 @@ export function InvoiceCreate() {
         save={
           <Button
             onClick={() => void handleSave()}
-            disabled={isSaving || (!isMilestone && kind !== '' && tax.blocked)}
+            disabled={isSaving || (!isMilestone && tax.blocked)}
           >
             {isSaving ? t('saving') : isMilestone ? t('prepareMilestone') : t('saveDraft')}
           </Button>
@@ -324,136 +309,88 @@ export function InvoiceCreate() {
           dirty: tCommon('formState.dirty'),
           clean: tCommon('formState.clean'),
         }}
-        lifecycle={
-          <LifecycleStepper
-            steps={LIFECYCLE_KEYS.map((key) => ({ key, label: t(`lifecycle.${key}`) }))}
-            current="DRAFT"
-            stepOfLabel={(n, total) => t('stepOf', { n, total })}
-          />
-        }
       />
 
-      <header className="space-y-1">
-        <p className="text-caption font-semibold uppercase tracking-wide text-muted-foreground">
-          {t('eyebrow')}
-        </p>
+      <header className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-h2 font-semibold text-foreground">{t('title')}</h2>
-        <p className="max-w-prose text-body-sm text-muted-foreground">{t('intro')}</p>
+        {typeSwitch}
       </header>
 
       <FormErrorSummary errors={summaryErrors} formErrors={saveError ? [saveError] : []} />
 
-      {/* ADR-048 — a sale outside any contract is typed by hand, on its own form. */}
-      <Link
-        href="/finance/accounting/invoices/new/sale"
-        className="flex items-center justify-between gap-4 rounded-panel border border-dashed border-border-strong bg-surface px-4 py-3 text-body-sm hover:border-brand-primary hover:bg-brand-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary"
-      >
-        <span>
-          <span className="block font-semibold text-foreground">{t('otherSaleTitle')}</span>
-          <span className="block text-muted-foreground">{t('otherSaleBody')}</span>
-        </span>
-        <span className="shrink-0 font-semibold text-brand-primary">{t('otherSaleAction')} →</span>
-      </Link>
+      <div className="grid gap-x-10 gap-y-5 rounded-panel border border-border bg-surface p-5 sm:p-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="space-y-4">
+          <FormField htmlFor={FIELD_IDS.project} label={t('project')} required error={shown.project}>
+            <Combobox
+              id={FIELD_IDS.project}
+              value={projectId}
+              onChange={(next) => {
+                setProjectId(next);
+                setSourceId('');
+                setSaveError(null);
+              }}
+              options={projectOptions}
+              placeholder={t('projectPlaceholder')}
+              searchPlaceholder={t('projectSearch')}
+              emptyLabel={t('projectEmpty')}
+              loading={projects.isPending}
+              loadingLabel={t('loading')}
+              invalid={Boolean(shown.project)}
+              aria-required
+            />
+          </FormField>
 
-      <RadioGroup<InvoiceSourceKind>
-        label={t('kindLabel')}
-        name="invoice-kind"
-        required
-        variant="card"
-        value={kind}
-        onChange={(next) => {
-          setKind(next);
-          setSourceId('');
-          setSaveError(null);
-        }}
-        options={INVOICE_SOURCE_KINDS.map((value) => ({
-          value,
-          label: t(`kind.${value}.label`),
-          description: t(`kind.${value}.description`),
-          icon: KIND_ICONS[value],
-        }))}
-      />
-      {shown.kind ? (
-        <p className="-mt-4 text-caption font-medium text-danger" role="alert">
-          {shown.kind}
-        </p>
-      ) : null}
+          <FormField
+            htmlFor={FIELD_IDS.source}
+            label={t(`source.${kind}.label`)}
+            required
+            hint={sourceHint ?? undefined}
+            error={shown.source}
+          >
+            <Combobox
+              id={FIELD_IDS.source}
+              value={sourceId}
+              onChange={(next) => {
+                setSourceId(next);
+                setSaveError(null);
+              }}
+              options={sourceOptions}
+              placeholder={t(`source.${kind}.placeholder`)}
+              searchPlaceholder={t('sourceSearch')}
+              emptyLabel={t('sourceNoMatch')}
+              loading={sources.isLoading}
+              loadingLabel={t('loading')}
+              disabled={!projectId}
+              invalid={Boolean(shown.source)}
+              aria-required
+            />
+          </FormField>
 
-      <FormGroup title={t('detailsTitle')} description={t('detailsDescription')}>
-        <FormField htmlFor={FIELD_IDS.project} label={t('project')} required error={shown.project}>
-          <Combobox
-            id={FIELD_IDS.project}
-            value={projectId}
-            onChange={(next) => {
-              setProjectId(next);
-              setSourceId('');
-              setSaveError(null);
-            }}
-            options={projectOptions}
-            placeholder={t('projectPlaceholder')}
-            searchPlaceholder={t('projectSearch')}
-            emptyLabel={t('projectEmpty')}
-            loading={projects.isPending}
-            loadingLabel={t('loading')}
-            invalid={Boolean(shown.project)}
-            aria-required
-          />
-        </FormField>
+          {sources.isError ? (
+            <Alert
+              variant="error"
+              title={t('sourceLoadFailed')}
+              action={
+                <Button variant="outline" size="sm" onClick={sources.refetch}>
+                  {t('retry')}
+                </Button>
+              }
+            />
+          ) : null}
 
-        <FormField
-          htmlFor={FIELD_IDS.source}
-          label={kind ? t(`source.${kind}.label`) : t('source.IPC.label')}
-          required
-          hint={sourceHint}
-          error={shown.source}
-        >
-          <Combobox
-            id={FIELD_IDS.source}
-            value={sourceId}
-            onChange={(next) => {
-              setSourceId(next);
-              setSaveError(null);
-            }}
-            options={sourceOptions}
-            placeholder={kind ? t(`source.${kind}.placeholder`) : t('source.IPC.placeholder')}
-            searchPlaceholder={t('sourceSearch')}
-            emptyLabel={t('sourceNoMatch')}
-            loading={sources.isLoading}
-            loadingLabel={t('loading')}
-            disabled={!kind || !projectId}
-            invalid={Boolean(shown.source)}
-            aria-describedby={`${FIELD_IDS.source}-hint`}
-            aria-required
-          />
-        </FormField>
-
-        {sources.isError ? (
-          <Alert
-            className="sm:col-span-2"
-            variant="error"
-            title={t('sourceLoadFailed')}
-            action={
-              <Button variant="outline" size="sm" onClick={sources.refetch}>
-                {t('retry')}
-              </Button>
-            }
-          />
-        ) : null}
-
-        <FormField htmlFor="invoice-client" label={t('client')} hint={t('clientHint')}>
-          <Input id="invoice-client" readOnly value={clientName} placeholder={t('clientPending')} />
-        </FormField>
+          {clientName ? (
+            <p className="text-body-sm">
+              <span className="text-muted-foreground">{t('billTo')} </span>
+              <span className="font-medium text-foreground">{clientName}</span>
+            </p>
+          ) : null}
+        </div>
 
         {isMilestone ? (
-          <p className="text-body-sm text-muted-foreground sm:col-span-2">{t('milestoneIssueNote')}</p>
+          <p className="self-center text-body-sm text-muted-foreground">{t('milestoneIssueNote')}</p>
         ) : (
-          <>
-            <FormField
-              htmlFor={FIELD_IDS.invoiceDate}
-              label={t('invoiceDate')}
-              required
-              error={shown.invoiceDate}
-            >
+          <div className="grid content-start gap-4 sm:grid-cols-2">
+            <FormField htmlFor={FIELD_IDS.invoiceDate} label={t('invoiceDate')} required error={shown.invoiceDate}>
               <DatePicker
                 id={FIELD_IDS.invoiceDate}
                 value={invoiceDate}
@@ -463,13 +400,7 @@ export function InvoiceCreate() {
                 }}
               />
             </FormField>
-            <FormField
-              htmlFor={FIELD_IDS.dueDate}
-              label={t('dueDate')}
-              required
-              hint={t('dueDateHint')}
-              error={shown.dueDate}
-            >
+            <FormField htmlFor={FIELD_IDS.dueDate} label={t('dueDate')} required error={shown.dueDate}>
               <DatePicker
                 id={FIELD_IDS.dueDate}
                 value={dueDate}
@@ -480,31 +411,25 @@ export function InvoiceCreate() {
                 }}
               />
             </FormField>
-            <FormField htmlFor={FIELD_IDS.terms} label={t('terms')} error={shown.terms}>
-              <Input
-                id={FIELD_IDS.terms}
-                value={paymentTerms}
-                onChange={(event) => setPaymentTerms(event.target.value)}
-                placeholder={t('termsPlaceholder')}
-                maxLength={PAYMENT_TERMS_MAX}
-              />
-            </FormField>
-            {kind ? (
-              <div className="sm:col-span-2">
-                <InvoiceTaxField choice={tax} id="invoice-tax-code" disabled={isSaving} />
-              </div>
-            ) : null}
-          </>
+            <div className="sm:col-span-2">
+              <FormField htmlFor={FIELD_IDS.terms} label={t('terms')} error={shown.terms}>
+                <Input
+                  id={FIELD_IDS.terms}
+                  value={paymentTerms}
+                  onChange={(event) => setPaymentTerms(event.target.value)}
+                  placeholder={t('termsPlaceholder')}
+                  maxLength={PAYMENT_TERMS_MAX}
+                />
+              </FormField>
+            </div>
+          </div>
         )}
-      </FormGroup>
+      </div>
 
       <section className="space-y-3" aria-labelledby="invoice-lines-heading">
-        <div className="border-b border-border pb-2">
-          <h2 id="invoice-lines-heading" className="text-body font-semibold text-foreground">
-            {t('linesTitle')}
-          </h2>
-          <p className="text-caption text-muted-foreground">{t('linesNote')}</p>
-        </div>
+        <h3 id="invoice-lines-heading" className="border-b border-border pb-2 text-body font-semibold text-foreground">
+          {t('linesTitle')}
+        </h3>
 
         {line ? (
           <LineItemsEditor<SourceLine>
@@ -516,16 +441,16 @@ export function InvoiceCreate() {
             readOnly
           />
         ) : (
-          <EmptyState
-            variant="inline"
-            icon={<Receipt size={20} aria-hidden="true" />}
-            title={t('emptyLinesTitle')}
-            description={t('emptyLinesHint')}
-          />
+          <p className="py-6 text-center text-body-sm text-muted-foreground">{t(`emptyLines.${kind}`)}</p>
         )}
 
         {line ? (
-          <div className="flex flex-col items-end gap-1">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+            {!isMilestone ? (
+              <div className="w-full lg:max-w-sm">
+                <InvoiceTaxField choice={tax} id="invoice-tax-code" disabled={isSaving} />
+              </div>
+            ) : <span />}
             <TotalsBlock
               className="sm:max-w-sm"
               hidden={!financialsVisible}
@@ -555,9 +480,6 @@ export function InvoiceCreate() {
                     }
               }
             />
-            {financialsVisible && !(totals && totals.tax !== null) ? (
-              <p className="text-caption text-muted-foreground">{t('vatNote')}</p>
-            ) : null}
           </div>
         ) : null}
       </section>

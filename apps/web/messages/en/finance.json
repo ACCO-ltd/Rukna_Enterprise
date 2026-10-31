@@ -553,7 +553,7 @@
   },
   "eligibility": {
     "bill": {
-      "title": "Why can't I pay this?",
+      "title": "This bill is on hold",
       "readyToPay": "Ready to pay — {amount} not yet covered by a payment.",
       "readyToPost": "Ready to post. Once posted, it can be paid.",
       "paidInFull": "Paid in full.",
@@ -562,7 +562,9 @@
       "signatures": "A payment needs {count, plural, one {# bank signature} other {# bank signatures}} to be released.",
       "loading": "Checking whether this bill can be paid",
       "loadFailed": "Could not check whether this bill can be paid.",
-      "retry": "Try again"
+      "retry": "Try again",
+      "heldBy": "{reason}. To be cleared by {owner}.",
+      "showSteps": "Show every step"
     },
     "stage": {
       "blocked": "{reason} — owner: {owner}",
@@ -877,16 +879,51 @@
       "subtitle": "Open invoices by client and days past due.",
       "party": "Client",
       "emptyTitle": "Nothing owed",
-      "empty": "No client has an open invoice."
+      "empty": "No client has an open invoice.",
+      "searchPlaceholder": "Client name or code",
+      "ledgerAgrees": "Agrees with Accounts receivable in the ledger ({amount}).",
+      "ledgerDiffers": "Accounts receivable in the ledger shows {amount}; the open invoices differ by {difference}.",
+      "tileTotal": "Open invoices"
     },
     "payables": {
       "title": "What we owe suppliers",
       "subtitle": "Open bills by supplier and days past due.",
       "party": "Supplier",
       "emptyTitle": "Nothing owed",
-      "empty": "No supplier has an open bill."
+      "empty": "No supplier has an open bill.",
+      "searchPlaceholder": "Supplier name or code",
+      "ledgerAgrees": "Agrees with Accounts payable in the ledger ({amount}).",
+      "ledgerDiffers": "Accounts payable in the ledger shows {amount}; the open bills differ by {difference}.",
+      "tileTotal": "Open bills",
+      "whatsappTitle": "Send statement to the supplier",
+      "whatsappSubtitle": "Our record of {name} up to {date} goes to the supplier as a PDF."
     },
-    "loading": "Loading the aging report"
+    "loading": "Loading the aging report",
+    "summaryAsOf": "{total} open at the end of {date}",
+    "print": "Print",
+    "search": "Search",
+    "asOf": "As of",
+    "show": "Show",
+    "lateOnly": "Late only",
+    "noMatches": "No one matches these filters.",
+    "tileLate": "Late",
+    "tile90": "Over 90 days late",
+    "tileNet": "Net owed",
+    "share": "{percent}% of the total",
+    "lessOnAccount": "After {amount} paid in advance",
+    "colOnAccount": "Paid in advance",
+    "colNet": "Net owed",
+    "colRetention": "Retention held",
+    "colActions": "Actions",
+    "shareRow": "Share of total",
+    "statement": "Statement",
+    "statementOf": "Statement of {name}",
+    "sendStatementTo": "Send the statement to {name} on WhatsApp",
+    "whatsappTitle": "Send statement on WhatsApp",
+    "whatsappSubtitle": "The statement for {name} up to {date} goes to the client as a PDF.",
+    "shareUnder1": "Under 1% of the total",
+    "gapIsOpening": "The difference is exactly the opening balances carried in from the old system ({amount}); their opening-balance journal is not posted yet.",
+    "openingLink": "Opening balances"
   },
   "vat": {
     "title": "VAT report",
@@ -933,7 +970,7 @@
     "loadFailed": "The statements could not be loaded.",
     "loading": "Loading statements",
     "emptyTitle": "No statements yet",
-    "empty": "Import your bank's statement export to start reconciling it with the ledger.",
+    "empty": "Import the statement your bank sends to check it against the books.",
     "colAccount": "Bank account",
     "colPeriod": "Period",
     "colClosing": "Closing balance",
@@ -1050,8 +1087,26 @@
         "MATCHED": "Matched",
         "POSTED": "Posted from here"
       },
-      "match": "Match"
-    }
+      "match": "Match",
+      "undo": "Undo",
+      "undoTitle": "Undo this posting?",
+      "undoBody": "The journal posted for {amount} is reversed on the same day and the line is open again, to match or post to another account.",
+      "earlierOpenTitle": "An earlier statement is still open",
+      "earlierOpenBody": "Reconcile the statement to {date} first. Statements are reconciled in order.",
+      "broughtForwardTitle": "Before reconciliation began",
+      "cancelledTitle": "Recorded and reversed",
+      "cancelledNote": "Each entry here was reversed and the bank never saw either side, so they cancel out."
+    },
+    "card": {
+      "open": "{count, plural, one {# statement open} other {# statements open}}",
+      "upToDate": "Up to date",
+      "never": "Not started",
+      "reconciledTo": "Reconciled to {date} at {amount}",
+      "booksSay": "Not reconciled yet. The books show {amount}.",
+      "statements": "Statements"
+    },
+    "forAccount": "Statements of {name}",
+    "clearAccount": "Show every account"
   },
   "close": {
     "title": "Close {period}",
@@ -1100,7 +1155,7 @@
     "loading": "Loading transfers",
     "loadFailed": "Transfers could not be loaded.",
     "emptyTitle": "No transfers yet",
-    "empty": "Move money between your bank, cash box and float accounts here; each transfer posts to both accounts at once.",
+    "empty": "Move money between your bank accounts, cash boxes and mobile-money wallets.",
     "colTransfer": "Transfer",
     "colAccounts": "From → to",
     "colAmount": "Amount",
@@ -1143,6 +1198,25 @@
     "postsNow": "It posts at once: the money leaves one account and arrives in the other.",
     "cancel": "Cancel",
     "submit": "Transfer",
-    "submitForApproval": "Send for approval"
+    "submitForApproval": "Send for approval",
+    "views": {
+      "all": "All",
+      "waiting": "Waiting for approval",
+      "posted": "Posted",
+      "undone": "Reversed or rejected"
+    },
+    "viewsLabel": "Show",
+    "noneInView": "No transfers here.",
+    "tiles": {
+      "thisMonth": "Moved this month",
+      "waiting": "Waiting for approval",
+      "count": "{count, plural, one {# transfer} other {# transfers}}"
+    },
+    "forAccount": "Transfers of {name}",
+    "clearAccount": "Show every account",
+    "holds": "Holds {amount} in the books.",
+    "overdrawnTitle": "Not enough in the account",
+    "overdrawnBody": "After this transfer the books would show {after} in {name}. Check the amount, or record the money that came in first.",
+    "notMade": "Not made"
   }
 }

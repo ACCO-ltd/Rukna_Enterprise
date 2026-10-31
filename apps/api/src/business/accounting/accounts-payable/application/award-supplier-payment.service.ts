@@ -1,4 +1,5 @@
-import { BadRequestException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import {
+  ConflictException, BadRequestException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import type { RequestIdentity } from '@erp/types';
@@ -120,6 +121,7 @@ export class AwardSupplierPaymentService {
         bankAccountId: a.id,
         name: a.bankName === a.accountName ? a.bankName : `${a.bankName} · ${a.accountName}`,
         glCode: a.glCode,
+        kind: a.kind,
         underDualControl: a.activeSignatories > 0,
         lastUsed: a.id === lastUsed,
       }));
@@ -208,6 +210,9 @@ export class AwardSupplierPaymentService {
     if (!account) throw new NotFoundException(`BankAccount ${cmd.bankAccountId} not found in this organization`);
     if (account.status !== 'ACTIVE' || !account.allowsPayments) throw paymentUnprocessable('ACCOUNT_NOT_USABLE');
     if (account.currencyCode !== currencyCode) throw paymentUnprocessable('CURRENCY_MISMATCH');
+    // PN-2 — cash leaves a cash box, mobile money a wallet, a bank payment a bank account (PM-3).
+    const kindForMethod = { BANK: 'BANK', MOBILE_MONEY: 'MOBILE_WALLET', CASH: 'CASH' } as const;
+    if (account.kind && account.kind !== kindForMethod[cmd.paymentMethod]) throw paymentUnprocessable('ACCOUNT_WRONG_KIND');
     if (cmd.shape === 'PREPAY' && cmd.supplierBillId) throw paymentUnprocessable('PAYMENT_SHAPE_INVALID');
     // QA LOW — not before the order; and no prepayment once a posted bill waits (pay / apply it).
     if (revision?.effectiveFrom && paymentDate.getTime() < revision.effectiveFrom.getTime()) {
@@ -351,7 +356,16 @@ export class AwardSupplierPaymentService {
         return created.id;
       });
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') return this.payFromAward(identity, cmd);
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        // SP-3 — a reference already on a live payment is a refusal, not a replay to retry.
+        if (/live_reference_key|bank_reference/.test(String((error.meta as { target?: unknown } | undefined)?.target ?? ''))) {
+          throw new ConflictException({
+            errorCode: 'PAYMENT_REFERENCE_ALREADY_USED',
+            message: `Reference ${cmd.bankReference ?? ''} is already recorded on another payment from this account.`,
+          });
+        }
+        return this.payFromAward(identity, cmd);
+      }
       throw error;
     }
     if (replayed) return this.payFromAward(identity, cmd);

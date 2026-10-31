@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import type {
   BankLedgerLine,
@@ -11,10 +12,12 @@ import type {
 
 import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
 import { ACCOUNTING_POSTING_PORT, type IAccountingPostingPort } from '../../accounting-core/application/ports/accounting-posting.port.js';
-import { reconcile, statementAddsUp, suggestMatches } from '../domain/matching.js';
+import { parseDateOnly } from '../../accounting-core/domain/calendar-day.js';
+import { cancelledOutLines, reconcile, statementAddsUp, suggestMatches } from '../domain/matching.js';
 import { BankStatementRepository } from '../infrastructure/bank-statement.repository.js';
 
-const DATE = /^\d{4}-\d{2}-\d{2}$/;
+/** A real calendar day written YYYY-MM-DD (2026-02-31 is not one). */
+const isDay = (value: string | undefined) => typeof value === 'string' && value.length === 10 && parseDateOnly(value) !== null;
 const AMOUNT = /^-?\d+(\.\d{1,2})?$/;
 const MAX_LINES = 5000;
 const day = (d: Date) => d.toISOString().slice(0, 10);
@@ -25,12 +28,13 @@ type LedgerRow = {
   debitAmount: { toString(): string };
   creditAmount: { toString(): string };
   description: string | null;
-  entry: { id: string; journalNumber: string | null; accountingDate: Date };
+  entry: { id: string; journalNumber: string | null; accountingDate: Date; reversalOfJournalEntryId?: string | null };
 };
 
-function ledgerView(l: LedgerRow, cutoff: Date | null = null): BankLedgerLine {
+function ledgerView(l: LedgerRow, cutoff: Date | null = null, cancelled: Set<string> = new Set()): BankLedgerLine {
   return {
     broughtForward: cutoff !== null && l.entry.accountingDate < cutoff,
+    cancelledOut: cancelled.has(l.id),
     journalLineId: l.id,
     journalEntryId: l.entry.id,
     journalNumber: l.entry.journalNumber,
@@ -38,6 +42,11 @@ function ledgerView(l: LedgerRow, cutoff: Date | null = null): BankLedgerLine {
     description: l.description,
     amount: dec(l.debitAmount).minus(dec(l.creditAmount)).toFixed(2),
   };
+}
+
+/** A statement line changed by someone else between reading it and writing it. */
+function changed(count: number): void {
+  if (count !== 1) throw new ConflictException({ errorCode: 'LINE_CHANGED', message: 'This line changed a moment ago. Reload the statement.' });
 }
 
 function bad(errorCode: string, message: string, details?: Record<string, unknown>) {
@@ -96,7 +105,7 @@ export class BankReconciliationService {
     if (!bank) throw new NotFoundException({ errorCode: 'BANK_ACCOUNT_NOT_FOUND', message: 'Bank account not found' });
 
     for (const [field, value] of [['periodStart', dto.periodStart], ['statementDate', dto.statementDate]] as const) {
-      if (!DATE.test(value)) throw bad('DATE_INVALID', `${field} must be YYYY-MM-DD`, { field });
+      if (!isDay(value)) throw bad('DATE_INVALID', `${field} must be a real date written YYYY-MM-DD`, { field });
     }
     if (dto.periodStart > dto.statementDate) throw bad('PERIOD_INVALID', 'The statement period must start on or before its end date.');
     for (const [field, value] of [['openingBalance', dto.openingBalance], ['closingBalance', dto.closingBalance]] as const) {
@@ -107,7 +116,7 @@ export class BankReconciliationService {
 
     const lines = dto.lines.map((l, index) => {
       const lineNumber = index + 1;
-      if (!DATE.test(l.transactionDate)) throw bad('LINE_DATE_INVALID', `Line ${lineNumber}: the date must be YYYY-MM-DD`, { lineNumber });
+      if (!isDay(l.transactionDate)) throw bad('LINE_DATE_INVALID', `Line ${lineNumber}: the date must be a real date written YYYY-MM-DD`, { lineNumber });
       if (l.transactionDate < dto.periodStart || l.transactionDate > dto.statementDate) {
         throw bad('LINE_OUTSIDE_PERIOD', `Line ${lineNumber} is dated ${l.transactionDate}, outside the statement period.`, { lineNumber });
       }
@@ -174,20 +183,33 @@ export class BankReconciliationService {
     const db = this.repo.db();
     const s = await this.requireStatement(orgId, id);
     const glAccountId = s.bankAccount.glAccountId;
-    const [uncleared, balance, previous, cutoff] = await Promise.all([
+    const [uncleared, balance, previous, cutoff, earlierOpen] = await Promise.all([
       this.repo.uncleared(db, orgId, glAccountId, s.statementDate),
       this.repo.ledgerBalance(db, orgId, glAccountId, s.statementDate),
       this.repo.previousReconciled(db, orgId, s.bankAccountId, s.statementDate),
       this.repo.firstPeriodStart(db, orgId, s.bankAccountId),
+      s.status === 'OPEN' ? this.repo.earlierOpen(db, orgId, s.bankAccountId, s.statementDate) : Promise.resolve(null),
     ]);
     // Ledger lines dated before reconciliation began are in the first statement's opening balance.
-    const outstandingLines = uncleared.filter((l) => !cutoff || l.entry.accountingDate >= cutoff);
+    const broughtForward = (l: LedgerRow) => cutoff !== null && l.entry.accountingDate < cutoff;
+    // BR-4 — a line and its reversal, both uncleared, cancel out: not outstanding, not a match.
+    // Once both predate this statement they have nothing more to say and drop off the list.
+    const cancelled = cancelledOutLines(
+      uncleared.filter((l) => !broughtForward(l)).map((l) => ({
+        id: l.id,
+        journalEntryId: l.entry.id,
+        reversalOfJournalEntryId: l.entry.reversalOfJournalEntryId ?? null,
+        amount: dec(l.debitAmount).minus(dec(l.creditAmount)),
+      })),
+    );
+    const shown = uncleared.filter((l) => !cancelled.has(l.id) || l.entry.accountingDate >= s.periodStart);
+    const outstandingLines = uncleared.filter((l) => !broughtForward(l) && !cancelled.has(l.id));
 
     const unmatched = s.lines.filter((l) => l.matchStatus === 'UNMATCHED');
     const suggestions = s.status === 'OPEN'
       ? suggestMatches(
           unmatched.map((l) => ({ id: l.id, transactionDate: l.transactionDate, amount: dec(l.amount) })),
-          uncleared.map((l) => ({ id: l.id, accountingDate: l.entry.accountingDate, amount: dec(l.debitAmount).minus(dec(l.creditAmount)) })),
+          uncleared.filter((l) => !cancelled.has(l.id)).map((l) => ({ id: l.id, accountingDate: l.entry.accountingDate, amount: dec(l.debitAmount).minus(dec(l.creditAmount)) })),
         )
       : [];
     const unclearedById = new Map(uncleared.map((l) => [l.id, l]));
@@ -225,8 +247,9 @@ export class BankReconciliationService {
         matchStatus: l.matchStatus,
         matched: l.matchedJournalLine ? ledgerView(l.matchedJournalLine, cutoff) : null,
         suggestion: suggestionOf.has(l.id) ? ledgerView(suggestionOf.get(l.id)!, cutoff) : null,
+        adjustmentJournalEntryId: l.adjustmentJournalEntryId ?? null,
       })),
-      uncleared: uncleared.map((l) => ledgerView(l, cutoff)),
+      uncleared: shown.map((l) => ledgerView(l, cutoff, cancelled)),
       reconciliation: {
         ledgerBalance: ledgerBalance.toFixed(2),
         outstanding: r.outstanding.toFixed(2),
@@ -236,7 +259,8 @@ export class BankReconciliationService {
         balanced: r.balanced,
       },
       previousClosing: previous ? dec(previous.closingBalance).toFixed(2) : null,
-      canReconcile: s.status === 'OPEN' && unmatched.length === 0 && r.balanced,
+      canReconcile: s.status === 'OPEN' && unmatched.length === 0 && r.balanced && !earlierOpen,
+      earlierOpenStatementDate: earlierOpen ? day(earlierOpen.statementDate) : null,
     };
   }
 
@@ -247,10 +271,10 @@ export class BankReconciliationService {
     const line = s.lines.find((l) => l.id === lineId);
     if (!line) throw new NotFoundException({ errorCode: 'LINE_NOT_FOUND', message: 'Statement line not found' });
     if (line.matchStatus !== 'UNMATCHED') throw new ConflictException({ errorCode: 'LINE_ALREADY_MATCHED', message: 'This line is already matched. Unmatch it first.' });
-    await this.repo.db().$transaction(async (tx) => {
+    await this.cleared(() => this.repo.db().$transaction(async (tx) => {
       await this.assertMatchable(tx, orgId, s.bankAccount.glAccountId, line, journalLineId);
-      await this.repo.setMatch(tx, line.id, { matchStatus: 'MATCHED', matchedJournalLineId: journalLineId, matchedAt: new Date(), matchedBy: identity.userId });
-    });
+      changed(await this.repo.setMatch(tx, line.id, 'UNMATCHED', { matchStatus: 'MATCHED', matchedJournalLineId: journalLineId, matchedAt: new Date(), matchedBy: identity.userId }));
+    }));
     return this.workspace(identity, id);
   }
 
@@ -261,13 +285,13 @@ export class BankReconciliationService {
     const view = await this.workspace(identity, id);
     const toAccept = view.lines.filter((l) => l.matchStatus === 'UNMATCHED' && l.suggestion);
     if (toAccept.length === 0) return view;
-    await this.repo.db().$transaction(async (tx) => {
+    await this.cleared(() => this.repo.db().$transaction(async (tx) => {
       for (const l of toAccept) {
         const line = s.lines.find((x) => x.id === l.id)!;
         await this.assertMatchable(tx, orgId, s.bankAccount.glAccountId, line, l.suggestion!.journalLineId);
-        await this.repo.setMatch(tx, l.id, { matchStatus: 'MATCHED', matchedJournalLineId: l.suggestion!.journalLineId, matchedAt: new Date(), matchedBy: identity.userId });
+        changed(await this.repo.setMatch(tx, l.id, 'UNMATCHED', { matchStatus: 'MATCHED', matchedJournalLineId: l.suggestion!.journalLineId, matchedAt: new Date(), matchedBy: identity.userId }));
       }
-    });
+    }));
     return this.workspace(identity, id);
   }
 
@@ -277,11 +301,11 @@ export class BankReconciliationService {
     const line = s.lines.find((l) => l.id === lineId);
     if (!line) throw new NotFoundException({ errorCode: 'LINE_NOT_FOUND', message: 'Statement line not found' });
     if (line.matchStatus === 'POSTED') {
-      throw new ConflictException({ errorCode: 'LINE_POSTED', message: 'This line was posted as a journal. Reverse the journal to undo it.' });
+      throw new ConflictException({ errorCode: 'LINE_POSTED', message: 'This line was posted as a journal. Undo the posting instead.' });
     }
     if (line.matchStatus === 'MATCHED') {
-      await this.repo.db().$transaction((tx) =>
-        this.repo.setMatch(tx, line.id, { matchStatus: 'UNMATCHED', matchedJournalLineId: null, matchedAt: null, matchedBy: null }));
+      await this.repo.db().$transaction(async (tx) =>
+        changed(await this.repo.setMatch(tx, line.id, 'MATCHED', { matchStatus: 'UNMATCHED', matchedJournalLineId: null, matchedAt: null, matchedBy: null })));
     }
     return this.workspace(identity, id);
   }
@@ -310,6 +334,8 @@ export class BankReconciliationService {
     const moneyIn = amount.isPositive();
     const size = amount.abs();
     const memo = dto.memo?.trim() || line.description;
+    // After an undo the line may be posted again: each posting has its own source key.
+    const earlier = await this.repo.postingsFromLine(db, orgId, line.id);
     await db.$transaction(async (tx) => {
       const result = await this.posting.post(
         {
@@ -320,7 +346,7 @@ export class BankReconciliationService {
           currencyCode: s.currencyCode,
           eventType: 'EVT-BNK-001',
           sourceDocumentType: 'BANK_STATEMENT',
-          sourceDocumentId: line.id,
+          sourceDocumentId: earlier === 0 ? line.id : `${line.id}:${earlier}`,
           journalCategory: 'CASH_AND_BANK',
           entryPurpose: 'NORMAL',
           postingOrigin: 'SYSTEM_CASH',
@@ -344,14 +370,62 @@ export class BankReconciliationService {
         tx as never,
       );
       const bankLine = await this.repo.bankLineOf(tx, result.journalEntryId, s.bankAccount.glAccountId);
-      await this.repo.setMatch(tx, line.id, {
+      changed(await this.repo.setMatch(tx, line.id, 'UNMATCHED', {
         matchStatus: 'POSTED',
         matchedJournalLineId: bankLine!.id,
         adjustmentJournalEntryId: result.journalEntryId,
         matchedAt: new Date(),
         matchedBy: identity.userId,
-      });
+      }));
       await this.audit(tx, identity, s.id, 'BANK_STATEMENT_LINE_POSTED', { lineId: line.id, journalEntryId: result.journalEntryId, accountId: account.id, amount: amount.toFixed(2) });
+    });
+    return this.workspace(identity, id);
+  }
+
+  /**
+   * BR-3 — undo a line posted from the statement by mistake (wrong account, wrong line): the journal's
+   * mirror posts on the same day and the line is unmatched, ready to match or post again. The
+   * journal and its mirror cancel out, so neither is left outstanding.
+   */
+  async undoPost(identity: RequestIdentity, id: string, lineId: string): Promise<BankStatementWorkspace> {
+    const orgId = identity.activeOrganizationId;
+    const s = await this.requireOpen(orgId, id);
+    const line = s.lines.find((l) => l.id === lineId);
+    if (!line) throw new NotFoundException({ errorCode: 'LINE_NOT_FOUND', message: 'Statement line not found' });
+    if (line.matchStatus !== 'POSTED' || !line.adjustmentJournalEntryId) {
+      throw new ConflictException({ errorCode: 'LINE_NOT_POSTED', message: 'Only a line posted from the statement can be undone.' });
+    }
+    const db = this.repo.db();
+    const original = await this.repo.journal(db, line.adjustmentJournalEntryId);
+    if (!original) throw new NotFoundException({ errorCode: 'JOURNAL_NOT_FOUND', message: 'The journal posted from this line was not found.' });
+    await db.$transaction(async (tx) => {
+      changed(await this.repo.setMatch(tx, line.id, 'POSTED', { matchStatus: 'UNMATCHED', matchedJournalLineId: null, adjustmentJournalEntryId: null, matchedAt: null, matchedBy: null }));
+      const result = await this.posting.post(
+        {
+          organizationId: orgId,
+          accountingDate: original.accountingDate,
+          documentDate: original.accountingDate,
+          description: `Undo: ${original.description ?? ''}`.slice(0, 500),
+          currencyCode: original.currencyCode,
+          eventType: 'EVT-BNK-002',
+          sourceDocumentType: 'BANK_STATEMENT',
+          sourceDocumentId: `reversal-${original.id}`,
+          journalCategory: 'CASH_AND_BANK',
+          entryPurpose: 'REVERSAL',
+          postingOrigin: 'SYSTEM_CASH',
+          reversalOfJournalEntryId: original.id,
+          createdBy: identity.userId,
+          lines: original.lines.map((l) => ({
+            accountId: l.accountId,
+            debitAmount: new Decimal(l.creditAmount.toString()),
+            creditAmount: new Decimal(l.debitAmount.toString()),
+            sourceSubledgerType: l.sourceSubledgerType ?? undefined,
+            memo: l.description ? `Undo: ${l.description}`.slice(0, 500) : undefined,
+          })),
+        },
+        tx as never,
+      );
+      await this.audit(tx, identity, s.id, 'BANK_STATEMENT_LINE_UNDONE', { lineId: line.id, journalEntryId: original.id, reversalJournalEntryId: result.journalEntryId });
     });
     return this.workspace(identity, id);
   }
@@ -359,6 +433,14 @@ export class BankReconciliationService {
   async reconcileStatement(identity: RequestIdentity, id: string): Promise<BankStatementWorkspace> {
     await this.requireOpen(identity.activeOrganizationId, id);
     const view = await this.workspace(identity, id);
+    // BR-2 — statements reconcile in order: a later one assumes the earlier one's lines cleared.
+    if (view.earlierOpenStatementDate) {
+      throw new ConflictException({
+        errorCode: 'EARLIER_STATEMENT_OPEN',
+        message: `Reconcile the statement to ${view.earlierOpenStatementDate} first.`,
+        details: { statementDate: view.earlierOpenStatementDate },
+      });
+    }
     if (view.statement.unmatchedCount > 0) {
       throw new ConflictException({ errorCode: 'LINES_UNMATCHED', message: `${view.statement.unmatchedCount} statement line(s) are not matched yet.` });
     }
@@ -380,7 +462,15 @@ export class BankReconciliationService {
   async remove(identity: RequestIdentity, id: string): Promise<void> {
     const s = await this.requireOpen(identity.activeOrganizationId, id);
     if (s.lines.some((l) => l.matchStatus === 'POSTED')) {
-      throw new ConflictException({ errorCode: 'STATEMENT_HAS_POSTINGS', message: 'Journals were posted from this statement. Reverse them before removing it.' });
+      throw new ConflictException({ errorCode: 'STATEMENT_HAS_POSTINGS', message: 'Journals were posted from this statement. Undo them before removing it.' });
+    }
+    // BR-2 — removing one from the middle would break the chain the next one opens from.
+    const later = await this.repo.later(this.repo.db(), identity.activeOrganizationId, s.bankAccountId, s.statementDate);
+    if (later) {
+      throw new ConflictException({
+        errorCode: 'STATEMENT_NOT_LATEST',
+        message: `A later statement (to ${day(later.statementDate)}) follows this one. Remove that one first.`,
+      });
     }
     await this.repo.db().$transaction(async (tx) => {
       await this.repo.delete(tx, s.id);
@@ -389,6 +479,18 @@ export class BankReconciliationService {
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
+
+  /** A ledger line taken by another statement line at the same moment (its unique index): 409. */
+  private async cleared<T>(work: () => Promise<T>): Promise<T> {
+    try {
+      return await work();
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new ConflictException({ errorCode: 'LEDGER_LINE_ALREADY_CLEARED', message: 'That ledger line is already matched to another statement line.' });
+      }
+      throw err;
+    }
+  }
 
   private async requireStatement(orgId: string, id: string) {
     const s = await this.repo.find(this.repo.db(), orgId, id);

@@ -164,3 +164,12 @@ export function defaultDueDate(invoiceDate: string, days = 30): string {
   const shifted = new Date(Date.UTC(y, m - 1, d + days));
   return shifted.toISOString().slice(0, 10);
 }
+
+/**
+ * CI-5 — "Record payment" on an invoice: the receipt form with its client, the invoice and its
+ * balance filled in, so the payment is applied to this invoice rather than oldest first.
+ */
+export function recordPaymentHref(invoice: Pick<ClientInvoice, 'id' | 'clientId' | 'outstandingAmount'>): string {
+  const params = new URLSearchParams({ clientId: invoice.clientId, invoiceId: invoice.id, amount: invoice.outstandingAmount });
+  return `/receipts/new?${params.toString()}`;
+}

@@ -23,6 +23,9 @@ export interface CreateClientInvoiceData {
   taxCodeId: string;
   taxRate: Decimal;
   paymentTerms?: string;
+  /** A hand-typed invoice's client PO / job number and note to the client (ADR-048); null = none. */
+  clientReference?: string | null;
+  notes?: string | null;
   billingAddressSnapshot: object;
   createdBy: string;
   /** ADR-046 §5 — the period breakdown of an IPC invoice (omitted by every other source). */
@@ -333,6 +336,52 @@ export class ClientInvoiceRepository {
     });
   }
 
+  /**
+   * CI-3 — what has settled each invoice, by kind: receipts applied, credit notes, write-offs.
+   * Posted rows only; a reversed receipt, credit note or write-off gave its amount back.
+   */
+  async findSettlementTotals(prisma: TenantPrisma, organizationId: string, invoiceIds: string[]) {
+    const totals = new Map<string, { paid: Decimal; credited: Decimal; writtenOff: Decimal }>();
+    if (invoiceIds.length === 0) return totals;
+    const zero = () => ({ paid: new Decimal(0), credited: new Decimal(0), writtenOff: new Decimal(0) });
+    const [paid, credited, writtenOff] = await Promise.all([
+      prisma.clientReceiptAllocation.groupBy({
+        by: ['clientInvoiceId'],
+        where: { organizationId, clientInvoiceId: { in: invoiceIds }, postingStatus: 'POSTED' },
+        _sum: { allocatedAmount: true },
+      }),
+      prisma.creditNote.groupBy({
+        by: ['invoiceId'],
+        where: { organizationId, invoiceId: { in: invoiceIds }, postingStatus: 'POSTED' },
+        _sum: { totalAmount: true },
+      }),
+      prisma.receivableWriteOff.groupBy({
+        by: ['invoiceId'],
+        where: { organizationId, invoiceId: { in: invoiceIds }, status: 'POSTED' },
+        _sum: { amount: true },
+      }),
+    ]);
+    const at = (id: string) => totals.get(id) ?? totals.set(id, zero()).get(id)!;
+    for (const row of paid) at(row.clientInvoiceId).paid = new Decimal(row._sum.allocatedAmount ?? 0);
+    for (const row of credited) at(row.invoiceId).credited = new Decimal(row._sum.totalAmount ?? 0);
+    for (const row of writtenOff) at(row.invoiceId).writtenOff = new Decimal(row._sum.amount ?? 0);
+    return totals;
+  }
+
+  /** CI-3 — the receipts applied to one invoice, oldest first. */
+  findPayments(prisma: TenantPrisma, organizationId: string, invoiceId: string) {
+    return prisma.clientReceiptAllocation.findMany({
+      where: { organizationId, clientInvoiceId: invoiceId, postingStatus: 'POSTED' },
+      select: {
+        id: true,
+        allocatedAmount: true,
+        allocationDate: true,
+        receipt: { select: { id: true, receiptNumber: true, receiptDate: true, paymentMethod: true, reference: true } },
+      },
+      orderBy: [{ allocationDate: 'asc' }, { createdAt: 'asc' }],
+    });
+  }
+
   findUnpostedApproved(prisma: TenantPrisma, organizationId: string) {
     return prisma.clientInvoice.findMany({
       where: { organizationId, documentStatus: 'APPROVED', postingStatus: 'NOT_POSTED' },
@@ -463,6 +512,8 @@ export class ClientInvoiceRepository {
         taxRate: data.taxRate,
         outstandingAmount: data.totalAmount,
         paymentTerms: data.paymentTerms ?? null,
+        clientReference: data.clientReference ?? null,
+        notes: data.notes ?? null,
         billingAddressSnapshot: data.billingAddressSnapshot,
         documentStatus: 'DRAFT',
         postingStatus: 'NOT_POSTED',
@@ -480,7 +531,7 @@ export class ClientInvoiceRepository {
     invoiceId: string,
     header: Pick<
       CreateClientInvoiceData,
-      'clientId' | 'invoiceDate' | 'dueDate' | 'currencyCode' | 'subtotal' | 'vatAmount' | 'totalAmount' | 'taxCodeId' | 'taxRate' | 'paymentTerms' | 'billingAddressSnapshot'
+      'clientId' | 'invoiceDate' | 'dueDate' | 'currencyCode' | 'subtotal' | 'vatAmount' | 'totalAmount' | 'taxCodeId' | 'taxRate' | 'paymentTerms' | 'clientReference' | 'notes' | 'billingAddressSnapshot'
     >,
     organizationId: string,
     lines: ManualInvoiceLineData[],
@@ -500,7 +551,11 @@ export class ClientInvoiceRepository {
         taxCodeId: header.taxCodeId,
         taxRate: header.taxRate,
         paymentTerms: header.paymentTerms ?? null,
+        clientReference: header.clientReference ?? null,
+        notes: header.notes ?? null,
         billingAddressSnapshot: header.billingAddressSnapshot,
+        // A PDF previewed before this edit shows the old draft: drop it so the next view renders anew.
+        documentFileId: null,
         revision: { increment: 1 },
         lines: { create: lines.map((l) => ({ ...l, organizationId, currencyCode: header.currencyCode })) },
       },

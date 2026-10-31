@@ -575,8 +575,18 @@ export interface ReceiptAllocation {
   allocatedAmount: string;
   allocationDate: string;
   postingStatus: ReceiptPostingStatus;
+  journalEntryId?: string | null;
   reversalJournalEntryId: string | null;
+  /** RC-7 — made when the receipt posted (undone only by reversing the receipt), or applied later. */
+  atPosting?: boolean;
+  invoiceNumber?: string | null;
+  invoiceDate?: string;
+  invoiceDueDate?: string | null;
+  invoiceTotal?: string;
 }
+
+/** RC-6 — how the client paid. */
+export type ReceiptPaymentMethod = 'BANK_TRANSFER' | 'CHEQUE' | 'CASH' | 'MOBILE_MONEY' | 'CARD';
 
 /**
  * `GET /customer-receipts` and `?clientId=` — the raw PaymentReceipt, newest receipt date first.
@@ -598,13 +608,27 @@ export interface Receipt {
   currencyCode: string;
   /** Assigned when the receipt is posted (e.g. 'RCP-000017'); null before. */
   receiptNumber?: string | null;
+  paymentMethod?: string | null;
+  /** PM-1 — the payment method's proof; each column's meaning depends on the method. */
+  instrumentNumber?: string | null;
+  issuer?: string | null;
+  instrumentDate?: string | null;
+  payerName?: string | null;
+  payerAccount?: string | null;
+  receivedBy?: string | null;
   reference: string | null;
   notes: string | null;
   documentStatus: string;
   postingStatus: ReceiptPostingStatus;
+  /** The bank account the money landed in (the list and the detail include it). */
+  bankAccount?: { bankName: string; accountName: string } | null;
+  postedAt?: string | null;
   /** AR-2 — set when a posted receipt was reversed. */
   reversedAt?: string | null;
   reversalReason?: string | null;
+  /** RC-5 — set when an unposted receipt was cancelled (documentStatus CANCELLED). */
+  cancelledAt?: string | null;
+  cancellationReason?: string | null;
   createdBy: string;
   createdAt: string;
 }
@@ -612,6 +636,8 @@ export interface Receipt {
 /** `GET /customer-receipts/:id` — the receipt with its invoice allocations. */
 export interface ReceiptDetail extends Receipt {
   allocations: ReceiptAllocation[];
+  /** AR-5 — paid back to the client from this receipt (posted refunds). */
+  refundedAmount?: string;
 }
 
 /**

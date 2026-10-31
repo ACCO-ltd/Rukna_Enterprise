@@ -10,7 +10,7 @@ import { listClients } from '@/features/clients/api/clients-api';
 import { cancelInvoice, listInvoices } from '@/features/accounting/api/invoices-api';
 import type { Account, AccountVersion, ClientInvoice } from '@/features/accounting/types';
 
-import { InvoicesList } from './invoices-list';
+import { invoiceMatchesFilters, InvoicesList } from './invoices-list';
 import { PostInvoiceDialog } from './post-invoice-dialog';
 
 vi.mock('@/features/accounting/api/invoices-api', () => ({
@@ -221,7 +221,7 @@ describe('InvoicesList', () => {
     renderWithProviders(<InvoicesList />, { withToast: true });
 
     expect(await screen.findByText('No client invoices yet')).toBeInTheDocument();
-    expect(screen.getByText(/raised from a certified IPC, a billing milestone or a separate charge/i)).toBeInTheDocument();
+    expect(screen.getByText(/a sale, a payment certificate, a milestone or a separate charge/i)).toBeInTheDocument();
   });
 
 });
@@ -380,5 +380,29 @@ describe('InvoicesList — cancel a draft with undo (Step 2g)', () => {
     });
     expect(await screen.findByText('Could not cancel the draft')).toBeInTheDocument();
     expect(within(screen.getByRole('table')).getByText('Not yet numbered')).toBeInTheDocument();
+  });
+});
+
+describe('invoiceMatchesFilters — the Status filter', () => {
+  const today = '2026-10-30';
+  const rows = {
+    draft: invoice({ id: 'd', documentStatus: 'DRAFT', postingStatus: 'NOT_POSTED' }),
+    open: invoice({ id: 'o', documentStatus: 'APPROVED', postingStatus: 'POSTED', dueDate: '2026-11-30', outstandingAmount: '10.00' }),
+    late: invoice({ id: 'l', documentStatus: 'APPROVED', postingStatus: 'POSTED', dueDate: '2026-10-01', outstandingAmount: '10.00' }),
+    paid: invoice({ id: 'p', documentStatus: 'APPROVED', postingStatus: 'POSTED', outstandingAmount: '0.00' }),
+    void: invoice({ id: 'v', documentStatus: 'CANCELLED', postingStatus: 'NOT_POSTED' }),
+  };
+  const kept = (state: string) =>
+    Object.entries(rows)
+      .filter(([, inv]) => invoiceMatchesFilters(inv, { state }, today))
+      .map(([key]) => key);
+
+  it('reads what the reader acts on, not the two status axes', () => {
+    expect(kept('DRAFT')).toEqual(['draft']);
+    // Awaiting payment includes the overdue ones: both are owed.
+    expect(kept('UNPAID')).toEqual(['open', 'late']);
+    expect(kept('OVERDUE')).toEqual(['late']);
+    expect(kept('PAID')).toEqual(['paid']);
+    expect(kept('VOID')).toEqual(['void']);
   });
 });

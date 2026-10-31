@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
@@ -31,7 +32,8 @@ export function StatementImport() {
   const queryClient = useQueryClient();
   const banks = useBankAccounts();
 
-  const [bankAccountId, setBankAccountId] = useState('');
+  // `?account=` (from an account page or the list) chooses the account.
+  const [bankAccountId, setBankAccountId] = useState(useSearchParams()?.get('account') ?? '');
   const [file, setFile] = useState<File | null>(null);
   const [sheet, setSheet] = useState<ParsedSheet | null>(null);
   const [readError, setReadError] = useState<string | null>(null);

@@ -56,6 +56,11 @@ export interface BankLedgerLine {
    * balance, so it is not counted as outstanding (it can still be matched if it clears now).
    */
   broughtForward: boolean;
+  /**
+   * BR-4 — recorded and then reversed, with neither side cleared (a cheque written then voided):
+   * the two cancel out, so neither is outstanding nor offered as a match.
+   */
+  cancelledOut: boolean;
 }
 
 export interface BankStatementLineView {
@@ -69,6 +74,8 @@ export interface BankStatementLineView {
   matched: BankLedgerLine | null;
   /** The unambiguous match the system proposes for an unmatched line, if any. */
   suggestion: BankLedgerLine | null;
+  /** The journal posted from this line (POSTED lines), to open it or undo it. */
+  adjustmentJournalEntryId: string | null;
 }
 
 export interface BankStatementWorkspace {
@@ -90,6 +97,8 @@ export interface BankStatementWorkspace {
   /** The previous reconciled statement's closing balance, to compare with this opening balance. */
   previousClosing: string | null;
   canReconcile: boolean;
+  /** BR-2 — an earlier statement of the account still open: it must be reconciled first. */
+  earlierOpenStatementDate: string | null;
 }
 
 export interface PostStatementLineRequest {

@@ -525,6 +525,7 @@ and `POST /bills/:id/post` (now with optional GL codes).
   detail are also open to `manage:payable` holders.
 
 **Model.**
+- PN-1 (2026-10-30): queue rows (`pay`, `settle`) also carry `payee` (the supplier on the order) and `remainingToPay` (what the order still needs; null when money is hidden for the role). PN-2: paying from the award refuses a method that does not suit the account (`422 ACCOUNT_WRONG_KIND`: cash from a cash box, mobile money from a wallet, bank from a bank account); the award draft's accounts carry `kind`.
 - `StoreDocumentStatus` has `WITHDRAWN` (for `/withdraw`). New `NotificationKind`
   `RECEIPT_REJECTED` (the "buyer notified in-app" on reject). `SourceDocType` gains
   `BUYER_ADVANCE`. `advance_returns.journal_entry_id` and

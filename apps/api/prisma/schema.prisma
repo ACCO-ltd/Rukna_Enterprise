@@ -2600,6 +2600,9 @@ model BankAccount {
   currencyCode    String            @map("currency_code") @db.VarChar(3)
   branch          String?
   treasuryGroupId String?           @map("treasury_group_id")
+  // PM-3 — what the account is: a bank account, a cash box or a mobile-money wallet. A receipt's
+  // payment method decides which kind it may land in (cash → cash box, mobile money → wallet).
+  kind            BankAccountKind   @default(BANK)
   allowsReceipts  Boolean           @default(true) @map("allows_receipts")
   allowsPayments  Boolean           @default(true) @map("allows_payments")
   isReconcilable  Boolean           @default(true) @map("is_reconcilable")
@@ -2834,13 +2837,38 @@ model DocumentNumberSequence {
   prefix          String           @db.VarChar(10)
   nextNumber      Int              @default(1) @map("next_number")
   paddingLength   Int              @default(6) @map("padding_length")
+  // CI-8 — when the count restarts. NEVER keeps one running count in `nextNumber` (INV-000124);
+  // YEARLY / MONTHLY / DAILY put the document date in the number (INV-2026-0001) and count each
+  // period on its own row in `document_number_period_counters`.
+  resetPolicy     NumberResetPolicy @default(NEVER) @map("reset_policy")
   // Optimistic concurrency — checked before update
   version         Int              @default(1)
   status          SequenceStatus   @default(ACTIVE)
   createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @default(now()) @updatedAt @map("updated_at")
+
+  periodCounters DocumentNumberPeriodCounter[]
 
   @@unique([organizationId, documentType, journalCategory])
   @@map("document_number_sequences")
+}
+
+/// CI-8 — the next number of one period ("2026", "2026-10", "2026-10-30") of a sequence that
+/// restarts. Claimed under the sequence row's lock, so the count is gapless within the period.
+model DocumentNumberPeriodCounter {
+  id             String                 @id @default(cuid())
+  organizationId String                 @map("organization_id")
+  sequenceId     String                 @map("sequence_id")
+  periodKey      String                 @map("period_key") @db.VarChar(10)
+  nextNumber     Int                    @default(1) @map("next_number")
+  createdAt      DateTime               @default(now()) @map("created_at")
+  updatedAt      DateTime               @default(now()) @updatedAt @map("updated_at")
+
+  sequence DocumentNumberSequence @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+
+  @@unique([sequenceId, periodKey])
+  @@index([organizationId])
+  @@map("document_number_period_counters")
 }
 
 // ─── AR Subledger ─────────────────────────────────────────────────────────────
@@ -2933,6 +2961,10 @@ model ClientInvoice {
   // project, contract or source tag — contract billing stays source-only (ADR-037).
   isManual               Boolean          @default(false) @map("is_manual")
   paymentTerms           String?          @map("payment_terms")
+  // The client's own reference for this bill — their purchase order or job number — printed on the
+  // invoice as "Your Ref." so their accounts team can match it. Free text; null when none was given.
+  clientReference        String?          @map("client_reference") @db.VarChar(100)
+  // A note to the client printed on this invoice alone, above the organisation's standard notes.
   notes                  String?
   billingAddressSnapshot Json             @map("billing_address_snapshot")
   // The rendered branded PDF (Commercial round-3) — generated lazily on first request for the
@@ -3295,6 +3327,21 @@ model PaymentReceipt {
   currencyCode         String           @map("currency_code") @db.VarChar(3)
   paymentMethod        String?          @map("payment_method")
   bankReference        String?          @map("bank_reference")
+  // PM-1 — the proof behind the payment method, one meaning per method (domain/receipt-payment-method.ts):
+  //   instrumentNumber  transfer reference · cheque number · mobile transaction ID · card authorisation
+  //                     code · cash receipt-book number
+  //   issuer            paying bank · drawee bank · mobile provider · card type
+  //   instrumentDate    transfer value date · cheque date (a later cheque date = cheque on hand)
+  //   payerName         payer's account name · name on cheque · sender's name
+  //   payerAccount      payer's account (last 4) · sender's phone (E.164) · card last 4
+  //   receivedBy        cash: who counted it
+  // One live receipt per method + issuer + number (partial unique index in the migration).
+  instrumentNumber     String?          @map("instrument_number") @db.VarChar(60)
+  issuer               String?          @db.VarChar(80)
+  instrumentDate       DateTime?        @map("instrument_date") @db.Date
+  payerName            String?          @map("payer_name") @db.VarChar(150)
+  payerAccount         String?          @map("payer_account") @db.VarChar(30)
+  receivedBy           String?          @map("received_by") @db.VarChar(100)
   reference            String?
   notes                String?
   documentStatus       PaymentDocStatus @default(DRAFT) @map("document_status")
@@ -3311,6 +3358,11 @@ model PaymentReceipt {
   reversedBy             String?        @map("reversed_by")
   reversalReason         String?        @map("reversal_reason")
   reversalJournalEntryId String?        @map("reversal_journal_entry_id")
+  // RC-5 — a receipt recorded but never posted, set aside (typed twice, the wrong client):
+  // documentStatus becomes CANCELLED; nothing reached the ledger.
+  cancelledAt            DateTime?      @map("cancelled_at")
+  cancelledBy            String?        @map("cancelled_by")
+  cancellationReason     String?        @map("cancellation_reason") @db.VarChar(500)
   lastPostingAttemptAt DateTime?        @map("last_posting_attempt_at")
   lastPostingErrorCode String?          @map("last_posting_error_code")
   migrationBatchId     String?          @map("migration_batch_id")
@@ -3522,6 +3574,13 @@ model SupplierPayment {
   unallocatedAmount    Decimal          @map("unallocated_amount") @db.Decimal(18, 2)
   paymentMethod        String           @map("payment_method")
   bankReference        String?          @map("bank_reference")
+  /// SP-3 — the proof of an outgoing payment, all optional: the cheque date, the mobile-money
+  /// provider, the supplier's account or phone paid to, and who took cash. `bankReference` holds
+  /// the number (cheque number, transfer reference, transaction ID, receipt number).
+  instrumentDate       DateTime?        @map("instrument_date") @db.Date
+  provider             String?          @db.VarChar(20)
+  payeeAccount         String?          @map("payee_account") @db.VarChar(50)
+  payeeName            String?          @map("payee_name") @db.VarChar(150)
   notes                String?
   documentStatus       PaymentDocStatus @default(DRAFT) @map("document_status")
   postingStatus        PostingStatus    @default(NOT_POSTED) @map("posting_status")
@@ -3543,6 +3602,11 @@ model SupplierPayment {
   cancelledAt          DateTime?        @map("cancelled_at")
   cancelledBy          String?          @map("cancelled_by")
   cancellationReason   String?          @map("cancellation_reason")
+  /// SP-2 — who reversed a posted payment, when, why, and the reversing journal.
+  reversedAt              DateTime?     @map("reversed_at")
+  reversedBy              String?       @map("reversed_by")
+  reversalReason          String?       @map("reversal_reason")
+  reversalJournalEntryId  String?       @map("reversal_journal_entry_id")
   /// ADR-045 — client key of "Pay supplier" from an award (partial unique per org, see migration).
   idempotencyKey       String?          @map("idempotency_key") @db.VarChar(100)
   /// ADR-045 — the quotation request this payment was made from (SUPPLIER_PAID notification).
@@ -3880,6 +3944,10 @@ model JournalEntry {
   postedBy                 String?         @map("posted_by")
   reversedBy               String?         @map("reversed_by")
   reversalReason           String?         @map("reversal_reason")
+  /// GL-J — an unposted manual journal set aside: it never reaches the ledger and stays on record.
+  cancelledBy              String?         @map("cancelled_by")
+  cancelledAt              DateTime?       @map("cancelled_at")
+  cancellationReason       String?         @map("cancellation_reason") @db.VarChar(500)
   /// G-2 — an accrual's automatic reversal date: when the journal posts, its mirror posts too, dated here.
   autoReverseOn            DateTime?       @map("auto_reverse_on") @db.Date
   revision                 Int             @default(1)
@@ -4841,6 +4909,14 @@ enum SequenceStatus {
   INACTIVE
 }
 
+/// CI-8 — when a document number's count restarts (and which date part the number carries).
+enum NumberResetPolicy {
+  NEVER
+  YEARLY
+  MONTHLY
+  DAILY
+}
+
 enum JournalCategory {
   GENERAL
   ACCOUNTS_RECEIVABLE
@@ -4862,6 +4938,7 @@ enum JournalStatus {
   REJECTED
   POSTED
   REVERSED
+  CANCELLED
 }
 
 enum EntryPurpose {
@@ -4903,6 +4980,13 @@ enum BillDocStatus {
   APPROVED
   REJECTED
   CANCELLED
+}
+
+/// PM-3 — what a bank account is (bank_accounts.kind).
+enum BankAccountKind {
+  BANK
+  CASH
+  MOBILE_WALLET
 }
 
 enum PaymentDocStatus {
@@ -6106,6 +6190,10 @@ enum MessagePurpose {
   RECEIPT
   PAYMENT_REMINDER
   OVERDUE_REMINDER
+  /// ST-6 — the client's statement of account (PDF), sent from Client statements.
+  STATEMENT
+  /// SS-3 — our record of a supplier's account (PDF), sent from Supplier statements.
+  SUPPLIER_STATEMENT
   /// ADR-044 phase 2 — staff alerts for competitive quotations (background-sent).
   QUOTE_READY
   QUOTE_REMINDER

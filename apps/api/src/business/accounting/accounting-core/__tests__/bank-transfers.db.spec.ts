@@ -4,6 +4,8 @@
  *   BT-01  up to the payment limit it posts at once: Dr the receiving GL / Cr the sending GL
  *   BT-02  above the limit it waits; the requester cannot approve, someone else can; reject needs a reason
  *   BT-03  refused: the same account, a receiver that takes no money in; a reversal mirrors the journal
+ *   BT-04  a date that is not a real day is refused (not rolled over); a reversal cannot predate the
+ *          transfer; the view names the journals
  */
 
 import { PrismaClient } from '@prisma/client';
@@ -81,4 +83,18 @@ it('BT-03: refuses the same account and a receiver that takes nothing in; a reve
   expect(back.status).toBe('REVERSED');
   expect(await glBalance(cashGlId)).toBe(5000);
   await expect(transfers.reverse(env.identity, first!.id, { reversalDate: day(), reason: 'again' })).rejects.toMatchObject({ status: 409 });
+});
+
+it('BT-04: real dates only; a reversal cannot predate the transfer; the view names its journals', async () => {
+  await expect(transfers.request(env.identity, { fromBankAccountId: env.bankAccountId, toBankAccountId: cashBoxId, amount: '5.00', transferDate: '2026-02-31' }))
+    .rejects.toMatchObject({ response: { errorCode: 'TRANSFER_DATE_INVALID' } });
+
+  const start = env.periods.openStart;
+  const later = new Date(start.getTime() + 5 * 86_400_000).toISOString().slice(0, 10);
+  const t = await transfers.request(env.identity, { fromBankAccountId: env.bankAccountId, toBankAccountId: cashBoxId, amount: '5.00', transferDate: later });
+  expect(t).toMatchObject({ status: 'POSTED', journalEntryId: expect.any(String), reversalJournalEntryId: null, postedAt: expect.any(String) });
+  await expect(transfers.reverse(env.identity, t.id, { reversalDate: day(), reason: 'Wrong day' }))
+    .rejects.toMatchObject({ response: { errorCode: 'REVERSAL_BEFORE_TRANSFER' } });
+  const back = await transfers.reverse(env.identity, t.id, { reversalDate: later, reason: 'Never moved' });
+  expect(back).toMatchObject({ status: 'REVERSED', reversalJournalEntryId: expect.any(String), reversedAt: expect.any(String) });
 });

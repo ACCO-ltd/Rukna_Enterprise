@@ -33,6 +33,7 @@ import {
 import { ArrowLeft, CheckCircle2 } from 'lucide-react';
 
 import { useModuleTrail } from '@/components/layout/module-chrome';
+import { ApiError } from '@/lib/api-client';
 import { formatMoney } from '@/lib/format';
 import { MONEY_SCALE, fromMinorUnits } from '@/lib/money';
 
@@ -304,20 +305,14 @@ export function JournalForm({ journal }: { journal?: JournalEntry } = {}) {
           {submitted && problemMessages.length > 0 ? (
             <Alert variant="error" messages={problemMessages} />
           ) : null}
-          {create.isError ? <Alert variant="error" messages={[t('saveFailed')]} /> : null}
+          {create.isError ? (
+            <Alert variant="error" messages={[create.error instanceof ApiError && create.error.message ? create.error.message : t('saveFailed')]} />
+          ) : null}
         </div>
 
-        <div>
-          <p className="text-micro font-semibold uppercase tracking-wider text-muted-foreground">
-            {t('eyebrow')}
-          </p>
-          <h2 className="mt-1 text-display font-semibold tracking-tight text-foreground">{title}</h2>
-          <p className="mt-1 max-w-prose text-body-sm text-muted-foreground">
-            {!journal ? t('intro') : correcting ? t('correctIntro') : t('editIntro')}
-          </p>
-        </div>
+        <h2 className="text-display font-semibold tracking-tight text-foreground">{title}</h2>
 
-        <FormGroup title={t('detailsTitle')} description={t('detailsDescription')}>
+        <FormGroup title={t('detailsTitle')}>
           <FormField
             htmlFor="journal-date"
             label={t('accountingDateLabel')}
@@ -382,7 +377,6 @@ export function JournalForm({ journal }: { journal?: JournalEntry } = {}) {
             <h2 id="journal-lines-heading" className="text-body font-semibold text-foreground">
               {t('linesHeading')}
             </h2>
-            <p className="text-caption text-muted-foreground">{t('linesHint')}</p>
           </div>
 
           {accounts.isError ? <Alert variant="error" messages={[t('accountsLoadFailed')]} /> : null}

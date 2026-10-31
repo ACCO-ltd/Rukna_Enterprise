@@ -1,10 +1,11 @@
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
 import {
   approveJournal,
+  cancelJournal,
   getJournal,
   listAccounts,
   postJournal,
@@ -26,6 +27,7 @@ vi.mock('@/features/accounting/api/accounting-api', () => ({
   listAccounts: vi.fn(),
   submitJournal: vi.fn(),
   approveJournal: vi.fn(),
+  cancelJournal: vi.fn(),
   postJournal: vi.fn(),
   reverseJournal: vi.fn(),
 }));
@@ -153,6 +155,7 @@ beforeEach(() => {
   vi.mocked(approveJournal).mockReset();
   vi.mocked(postJournal).mockReset();
   vi.mocked(reverseJournal).mockReset();
+  vi.mocked(cancelJournal).mockReset();
 
   vi.mocked(listAccounts).mockResolvedValue([account()]);
   vi.mocked(getJournal).mockResolvedValue(journal());
@@ -163,13 +166,14 @@ function render() {
 }
 
 describe('JournalDetail', () => {
-  it('leads with the journal value and its description', async () => {
+  it('leads with the description, the number and the amount', async () => {
     render();
 
-    // The module header owns the page's only h1; the record's value leads as an h2.
-    expect(await screen.findByRole('heading', { level: 2, name: '$2,500.00' })).toBeInTheDocument();
+    // The module header owns the page's only h1; the record leads as an h2.
+    expect(await screen.findByRole('heading', { level: 2, name: /January office rent/ })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { level: 1 })).not.toBeInTheDocument();
-    expect(screen.getByText('January office rent')).toBeInTheDocument();
+    expect(screen.getAllByText('JE-000001').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('$2,500.00').length).toBeGreaterThan(0);
   });
 
   /**
@@ -180,7 +184,8 @@ describe('JournalDetail', () => {
   it('names the account on a draft line, whose snapshots are empty', async () => {
     render();
 
-    expect(await screen.findAllByText('60100 — Office Expense')).toHaveLength(2);
+    const table = await screen.findByRole('table', { name: 'Lines' });
+    expect(within(table).getAllByText('60100 — Office Expense')).toHaveLength(2);
   });
 
   it('prefers the posted snapshot, which survives a later rename', async () => {
@@ -195,16 +200,17 @@ describe('JournalDetail', () => {
 
     render();
 
-    expect(await screen.findByText('60100 — Office Expense (2026)')).toBeInTheDocument();
+    const table = await screen.findByRole('table', { name: 'Lines' });
+    expect(within(table).getByText('60100 — Office Expense (2026)')).toBeInTheDocument();
   });
 
   it('totals both columns', async () => {
     render();
 
-    await screen.findByRole('heading', { level: 2, name: '$2,500.00' });
-    expect(screen.getByText('Totals')).toBeInTheDocument();
+    const table = await screen.findByRole('table', { name: 'Lines' });
+    expect(within(table).getByText('Totals')).toBeInTheDocument();
     // Two line amounts plus two totals, all 2,500.
-    expect(screen.getAllByText('$2,500.00').length).toBeGreaterThanOrEqual(3);
+    expect(within(table).getAllByText('$2,500.00')).toHaveLength(4);
   });
 
   describe('lifecycle actions', () => {
@@ -224,7 +230,9 @@ describe('JournalDetail', () => {
       vi.mocked(getJournal).mockResolvedValue(withStatus('REVERSED'));
       render();
 
-      expect(await screen.findByText('No action is available from this status.')).toBeInTheDocument();
+      await screen.findByRole('heading', { level: 2, name: /January office rent/ });
+      expect(screen.queryByRole('button', { name: 'Reverse' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Cancel journal' })).not.toBeInTheDocument();
     });
 
     it('submits after confirmation', async () => {
@@ -244,10 +252,10 @@ describe('JournalDetail', () => {
       vi.mocked(approveJournal).mockResolvedValue(withStatus('REJECTED'));
 
       render();
-      await user.click(await screen.findByRole('button', { name: 'Reject' }));
+      await user.click(await screen.findByRole('button', { name: 'Return' }));
 
-      await user.type(screen.getByLabelText('Rejection reason'), 'Wrong account used');
-      await user.click(screen.getByRole('button', { name: 'Reject', hidden: false }));
+      await user.type(screen.getByLabelText(/Reason/), 'Wrong account used');
+      await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Return' }));
 
       expect(vi.mocked(approveJournal)).toHaveBeenCalledWith('jrn-1', {
         approved: false,
@@ -278,7 +286,7 @@ describe('JournalDetail', () => {
 
       render();
 
-      expect(await screen.findByText('No action is available from this status.')).toBeInTheDocument();
+      await screen.findByRole('heading', { level: 2, name: /January office rent/ });
       expect(screen.queryByRole('link', { name: 'Edit and resubmit' })).not.toBeInTheDocument();
       sessionMocks.useSession.mockReturnValue({ user: { id: 'user-abcd1234' } });
     });
@@ -301,8 +309,8 @@ describe('JournalDetail', () => {
       vi.mocked(getJournal).mockResolvedValue(unbalanced());
       render();
 
-      expect(await screen.findByText(/do not agree/)).toBeInTheDocument();
-      expect(screen.getByText(/\$2,500\.00 against \$2,400\.00/)).toBeInTheDocument();
+      expect(await screen.findByText('Debits and credits do not agree')).toBeInTheDocument();
+      expect(screen.getByText('Debits $2,500.00, credits $2,400.00. It cannot post until they match.')).toBeInTheDocument();
     });
 
     it('will not offer to post it', async () => {
@@ -318,8 +326,54 @@ describe('JournalDetail', () => {
     it('says nothing when the two agree', async () => {
       render();
 
-      await screen.findByRole('heading', { level: 2, name: '$2,500.00' });
+      await screen.findByRole('heading', { level: 2, name: /January office rent/ });
       expect(screen.queryByText(/do not agree/)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('GL-J', () => {
+    it('cancels a journal that has not posted, with the reason', async () => {
+      const user = userEvent.setup();
+      vi.mocked(cancelJournal).mockResolvedValue(withStatus('CANCELLED'));
+      render();
+      await user.click(await screen.findByRole('button', { name: 'Cancel journal' }));
+      await user.type(screen.getByLabelText(/Reason/), 'Raised twice');
+      await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel journal' }));
+      expect(vi.mocked(cancelJournal)).toHaveBeenCalledWith('jrn-1', 'Raised twice');
+    });
+
+    it('says who cancelled it and why', async () => {
+      vi.mocked(getJournal).mockResolvedValue(
+        withStatus('CANCELLED', { cancelledByName: 'Amina Ali', cancelledAt: '2026-01-20T09:00:00.000Z', cancellationReason: 'Raised twice' }),
+      );
+      render();
+      expect(await screen.findByText('Cancelled by Amina Ali on Jan 20, 2026')).toBeInTheDocument();
+      expect(screen.getByText('Raised twice')).toBeInTheDocument();
+    });
+
+    it('reverses on the chosen day, never before the journal', async () => {
+      const user = userEvent.setup();
+      vi.mocked(getJournal).mockResolvedValue(withStatus('POSTED'));
+      vi.mocked(reverseJournal).mockResolvedValue(withStatus('POSTED'));
+      render();
+      await user.click(await screen.findByRole('button', { name: 'Reverse' }));
+      const dialog = screen.getByRole('dialog');
+      await user.type(within(dialog).getByLabelText(/Reason/), 'Wrong account');
+      await user.click(within(dialog).getByRole('button', { name: 'Reverse' }));
+      expect(vi.mocked(reverseJournal)).toHaveBeenCalledWith('jrn-1', { reversalDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), reason: 'Wrong account' });
+    });
+
+    it('links a reversed journal to its reversal and shows the server\'s reason when an action fails', async () => {
+      const user = userEvent.setup();
+      vi.mocked(getJournal).mockResolvedValue(
+        withStatus('SUBMITTED', { reversals: [{ id: 'jrn-9', journalNumber: 'JE-000009', accountingDate: '2026-02-01' }], approvedByName: null }),
+      );
+      vi.mocked(approveJournal).mockRejectedValue(new ApiError(403, 'You prepared this journal; someone else must approve it.', 'SOD_VIOLATION'));
+      render();
+      expect((await screen.findAllByRole('link', { name: 'JE-000009' }))[0]).toHaveAttribute('href', '/finance/accounting/journals/jrn-9');
+      await user.click(screen.getByRole('button', { name: 'Approve' }));
+      await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Approve' }));
+      expect(await screen.findByText('You prepared this journal; someone else must approve it.')).toBeInTheDocument();
     });
   });
 

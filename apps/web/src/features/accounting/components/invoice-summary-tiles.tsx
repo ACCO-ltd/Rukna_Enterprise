@@ -8,30 +8,11 @@ import { fromMinorUnits } from '@/lib/money';
 
 import type { InvoiceSummary } from '../invoice-summary';
 
-type Tone = 'neutral' | 'danger' | 'primary' | 'success' | 'historical';
-
-const TONE: Record<Tone, { dot: string; bar: string; value: string }> = {
-  neutral: { dot: 'bg-muted-foreground', bar: 'bg-border-strong', value: 'text-foreground' },
-  danger: { dot: 'bg-danger', bar: 'bg-danger', value: 'text-danger' },
-  primary: { dot: 'bg-brand-primary', bar: 'bg-brand-primary', value: 'text-foreground' },
-  success: { dot: 'bg-success', bar: 'bg-success', value: 'text-foreground' },
-  historical: { dot: 'bg-historical', bar: 'bg-historical', value: 'text-foreground' },
-};
-
-interface Tile {
-  key: string;
-  label: string;
-  value: string;
-  sub: string;
-  tone: Tone;
-  /** Picking the tile shows those invoices. Absent = a figure with no list behind it. */
-  onSelect?: () => void;
-}
-
 /**
- * Step 2c (ADR-047): the money summary above the invoice list — what is drafted, overdue, not due
- * yet, collected and held as retention. A tile with a list behind it is a button that applies
- * that view; the colour is never the only signal (each tile is labelled).
+ * The receivables bar above the invoice list: what clients owe, split overdue / not yet due on one
+ * bar, then drafts, cash received and retention held. Each figure with a list behind it is a button
+ * that applies that view. Money stays neutral; the dot and the bar segment carry the state, and
+ * every figure is labelled, so colour is never the only signal.
  */
 export function InvoiceSummaryTiles({
   summary,
@@ -45,89 +26,136 @@ export function InvoiceSummaryTiles({
   onShowNotDue: () => void;
 }) {
   const t = useTranslations('accounting.invoices.summary');
-  const locale = useLocale() as 'en' | 'ar';
+  const locale = useLocale() as 'en';
 
   if (summary.mixedCurrencies) {
     return <p className="text-body-sm text-muted-foreground">{t('mixedCurrencies')}</p>;
   }
   const money = (minor: number) => formatMoney(fromMinorUnits(minor, 2), summary.currency, locale) ?? '—';
 
-  const tiles: Tile[] = [
+  const owed = summary.outstanding.outstandingMinor;
+  const overduePct = owed > 0 ? Math.max(summary.overdue.outstandingMinor > 0 ? 2 : 0, Math.round((summary.overdue.outstandingMinor / owed) * 100)) : 0;
+  const metrics: { key: string; label: string; value: string; sub: string; onSelect?: () => void }[] = [
     {
       key: 'draft',
       label: t('draft'),
       value: money(summary.draft.totalMinor),
       sub: t('draftSub', { count: summary.draft.count }),
-      tone: 'neutral',
-      onSelect: onShowDrafts,
-    },
-    {
-      key: 'overdue',
-      label: t('overdue'),
-      value: money(summary.overdue.outstandingMinor),
-      sub:
-        summary.overdue.count > 0
-          ? t('overdueSub', { count: summary.overdue.count, days: summary.overdue.oldestDaysLate })
-          : t('overdueNone'),
-      tone: summary.overdue.count > 0 ? 'danger' : 'neutral',
-      onSelect: onShowOverdue,
-    },
-    {
-      key: 'notDue',
-      label: t('notDue'),
-      value: money(summary.notDue.outstandingMinor),
-      sub: t('invoices', { count: summary.notDue.count }),
-      tone: 'primary',
-      onSelect: onShowNotDue,
+      onSelect: summary.draft.count > 0 ? onShowDrafts : undefined,
     },
     {
       key: 'collected',
       label: t('collected'),
       value: money(summary.collected.collectedMinor),
       sub: t('paidSub', { count: summary.collected.paidCount }),
-      tone: 'success',
     },
-    {
-      key: 'retention',
-      label: t('retention'),
-      value: money(summary.retentionHeld.heldMinor),
-      sub: t('contracts', { count: summary.retentionHeld.contracts }),
-      tone: 'historical',
-    },
+    ...(summary.retentionHeld.heldMinor > 0
+      ? [
+          {
+            key: 'retention',
+            label: t('retention'),
+            value: money(summary.retentionHeld.heldMinor),
+            sub: t('contracts', { count: summary.retentionHeld.contracts }),
+          },
+        ]
+      : []),
   ];
 
   return (
-    <ul className="grid grid-cols-1 overflow-hidden rounded-panel border border-border bg-surface sm:grid-cols-2 lg:grid-cols-5">
-      {tiles.map((tile) => {
-        const tone = TONE[tile.tone];
+    <section
+      aria-label={t('label')}
+      className={cn(
+        'grid overflow-hidden rounded-panel border border-border bg-surface',
+        metrics.length === 3
+          ? 'lg:grid-cols-[minmax(0,2.2fr)_repeat(3,minmax(0,1fr))]'
+          : 'lg:grid-cols-[minmax(0,2.2fr)_repeat(2,minmax(0,1fr))]',
+      )}
+    >
+      <div className="space-y-3 px-5 py-4">
+        <div>
+          <p className="text-micro font-semibold uppercase tracking-wide text-muted-foreground">{t('outstanding')}</p>
+          <p className="mt-1 text-h1 font-semibold tabular-nums text-foreground">{money(owed)}</p>
+          <p className="text-caption text-muted-foreground">{t('invoices', { count: summary.outstanding.count })}</p>
+        </div>
+        <svg viewBox="0 0 100 8" preserveAspectRatio="none" className="block h-2 w-full overflow-hidden rounded-full" aria-hidden="true">
+          <rect width="100" height="8" className="fill-muted" />
+          {owed > 0 ? <rect x={overduePct} width={100 - overduePct} height="8" className="fill-brand-primary/70" /> : null}
+          {overduePct > 0 ? <rect width={overduePct} height="8" className="fill-danger" /> : null}
+        </svg>
+        <div className="flex flex-wrap gap-x-6 gap-y-1">
+          <Segment
+            dot="bg-danger"
+            label={t('overdue')}
+            value={money(summary.overdue.outstandingMinor)}
+            sub={summary.overdue.count > 0 ? t('oldest', { days: summary.overdue.oldestDaysLate }) : null}
+            onSelect={onShowOverdue}
+            ariaLabel={t('show', { label: t('overdue'), value: money(summary.overdue.outstandingMinor) })}
+          />
+          <Segment
+            dot="bg-brand-primary/70"
+            label={t('notDue')}
+            value={money(summary.notDue.outstandingMinor)}
+            sub={null}
+            onSelect={onShowNotDue}
+            ariaLabel={t('show', { label: t('notDue'), value: money(summary.notDue.outstandingMinor) })}
+          />
+        </div>
+      </div>
+      {metrics.map((m) => {
         const body = (
           <>
-            <span className="flex items-center gap-2 text-body-sm text-muted-foreground">
-              <span className={cn('size-2 rounded-full', tone.dot)} aria-hidden="true" />
-              {tile.label}
-            </span>
-            <span className={cn('mt-1 block text-h2 font-semibold tabular-nums', tone.value)}>{tile.value}</span>
-            <span className="mt-0.5 block text-caption text-muted-foreground">{tile.sub}</span>
-            <span className={cn('absolute inset-x-0 bottom-0 h-0.5', tone.bar)} aria-hidden="true" />
+            <span className="block text-micro font-semibold uppercase tracking-wide text-muted-foreground">{m.label}</span>
+            <span className="mt-1 block text-h3 font-semibold tabular-nums text-foreground">{m.value}</span>
+            <span className="block text-caption text-muted-foreground">{m.sub}</span>
           </>
         );
-        return (
-          <li key={tile.key} className="border-b border-border last:border-b-0 sm:border-e lg:border-b-0 lg:last:border-e-0">
-            {tile.onSelect ? (
-              <button
-                type="button"
-                onClick={tile.onSelect}
-                className="relative block h-full w-full px-4 py-3 text-start transition-colors hover:bg-surface-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-primary"
-                aria-label={t('show', { label: tile.label, value: tile.value })}
-              >
-                {body}
-              </button>
-            ) : (
-              <div className="relative h-full px-4 py-3">{body}</div>
-            )}
-          </li>
+        const cell = 'flex h-full flex-col justify-start border-t border-border px-5 py-4 text-start lg:border-s lg:border-t-0';
+        return m.onSelect ? (
+          <button
+            key={m.key}
+            type="button"
+            onClick={m.onSelect}
+            aria-label={t('show', { label: m.label, value: m.value })}
+            className={cn(cell, 'transition-colors hover:bg-surface-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-primary')}
+          >
+            {body}
+          </button>
+        ) : (
+          <div key={m.key} className={cell}>
+            {body}
+          </div>
         );
       })}
-    </ul>
+    </section>
+  );
+}
+
+function Segment({
+  dot,
+  label,
+  value,
+  sub,
+  onSelect,
+  ariaLabel,
+}: {
+  dot: string;
+  label: string;
+  value: string;
+  sub: string | null;
+  onSelect: () => void;
+  ariaLabel: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-label={ariaLabel}
+      className="-mx-1 flex min-h-11 items-center gap-2 rounded-control px-1 text-start text-body-sm hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-brand-primary"
+    >
+      <span className={cn('size-2 shrink-0 rounded-full', dot)} aria-hidden="true" />
+      <span className="text-muted-foreground">{label}</span>
+      <span className="font-semibold tabular-nums text-foreground">{value}</span>
+      {sub ? <span className="text-caption text-muted-foreground">· {sub}</span> : null}
+    </button>
   );
 }

@@ -123,6 +123,8 @@ NUMERIC FIXTURE — "INV-004282, Contract ACME-01, December 2026"
 
   DocumentNumberSequence consumed: nextNumber 4282 → 4283
   ClientInvoice.invoiceNumber assigned: "INV-004282"
+  (CI-8: with a yearly / monthly / daily format the invoice date's period counter is consumed
+  instead — document_number_period_counters "2026": 17 → 18 — and the number is "INV-2026-0017".)
 
 ERROR CODES
   POSTING_CONFIGURATION_MISSING       — no active PostingRuleVersion for this event + date

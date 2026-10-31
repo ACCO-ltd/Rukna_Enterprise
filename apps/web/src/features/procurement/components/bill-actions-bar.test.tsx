@@ -26,6 +26,7 @@ const mocks = vi.hoisted(() => ({
   useResolveMatchException: vi.fn(),
   useRunBillMatch: vi.fn(),
   useApproveMatchException: vi.fn(),
+  useSupplierBillEligibility: vi.fn(() => ({ data: undefined })),
 }));
 
 const routerMocks = vi.hoisted(() => ({ push: vi.fn() }));
@@ -333,5 +334,54 @@ describe('BillDocumentHeader — cancel a draft (AP-2)', () => {
       { permissions: MANAGER },
     );
     expect(screen.getByText('Entered twice')).toBeInTheDocument();
+  });
+});
+
+describe('bill header (SB-2)', () => {
+  const POSTED = {
+    ...BLOCKED,
+    billNumber: 'BILL-000007',
+    purchaseOrderId: null,
+    purchaseOrderRevisionId: null,
+    matchStatus: 'NOT_RUN',
+    postingStatus: 'POSTED',
+    outstandingAmount: '1850.50',
+  } as unknown as SupplierBill;
+
+  it('puts the balance due in the header and Pay bill beside it, prefilled for this bill', () => {
+    renderWithProviders(<BillDocumentHeader bill={POSTED} />, { permissions: [ACCOUNTING_PERMISSIONS.managePayables] });
+    expect(screen.getByRole('heading', { name: /BILL-000007/ })).toBeInTheDocument();
+    expect(screen.getByText('Balance due')).toBeInTheDocument();
+    expect(screen.getByText('$1,850.50')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Pay bill' })).toHaveAttribute(
+      'href',
+      '/finance/accounting/payments/new?supplier=sup-1&bill=bill-1&amount=1850.50',
+    );
+  });
+
+  it('offers no Pay bill once the bill is paid, or to a reader without manage-payables', () => {
+    const { unmount } = renderWithProviders(<BillDocumentHeader bill={{ ...POSTED, outstandingAmount: '0.00' } as SupplierBill} />, {
+      permissions: [ACCOUNTING_PERMISSIONS.managePayables],
+    });
+    expect(screen.queryByRole('link', { name: 'Pay bill' })).not.toBeInTheDocument();
+    expect(screen.getByText('Paid')).toBeInTheDocument();
+    unmount();
+    renderWithProviders(<BillDocumentHeader bill={POSTED} />, { permissions: [] });
+    expect(screen.queryByRole('link', { name: 'Pay bill' })).not.toBeInTheDocument();
+  });
+
+  it('names an unnumbered bill by what it is, never by a bare status', () => {
+    const { unmount } = renderWithProviders(
+      <BillDocumentHeader bill={{ ...POSTED, billNumber: null, postingStatus: 'OPENING_BALANCE' } as SupplierBill} />,
+      { permissions: [ACCOUNTING_PERMISSIONS.managePayables] },
+    );
+    expect(screen.getByRole('heading', { name: /Opening balance/ })).toBeInTheDocument();
+    unmount();
+    renderWithProviders(
+      <BillDocumentHeader bill={{ ...POSTED, billNumber: null, documentStatus: 'DRAFT', postingStatus: 'NOT_POSTED' } as SupplierBill} />,
+      { permissions: [ACCOUNTING_PERMISSIONS.managePayables] },
+    );
+    expect(screen.getByRole('heading', { name: /Draft bill/ })).toBeInTheDocument();
+    expect(screen.getByText('Total')).toBeInTheDocument();
   });
 });

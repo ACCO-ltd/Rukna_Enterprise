@@ -7,23 +7,20 @@ import { useTranslations } from 'next-intl';
 import { ArrowLeft } from 'lucide-react';
 import {
   Alert,
-  Avatar,
   Button,
   cn,
   Combobox,
   DatePicker,
-  entityTintClass,
   FormActionBar,
   FormField,
-  FormGroup,
   Input,
-  LifecycleStepper,
   LineItemsEditor,
   type LineColumn,
   MoneyInput,
   QuantityInput,
   Select,
   SideSheet,
+  Textarea,
 } from '@erp/ui';
 import type { ManualInvoiceInput, ManualInvoiceLineInput } from '@erp/types';
 
@@ -40,16 +37,20 @@ import { prepareTotals, formatRate } from '@/features/commercial/components/prep
 import { defaultDueDate } from '../invoice-actions';
 import { todayWireDate } from '../invoice-overdue';
 import { useIncomeAccounts, useSaveManualInvoice } from '../hooks/use-invoices';
+import { useApprovalSettings } from '../hooks/use-accounting';
+import { useLedgerBlocked } from '@/features/finance/hooks/use-accounting-readiness';
 import type { ClientInvoice } from '../types';
 import { InvoiceTaxField, taxCodeBody, useInvoiceTaxChoice, useInvoiceTaxErrorMessage } from './invoice-tax-field';
 
 const LIST_HREF = '/finance/accounting/invoices';
-const LIFECYCLE_KEYS = ['DRAFT', 'APPROVED', 'POSTED'] as const;
 const MAX_LINES = 50;
+/** ADR-024 ACC-CUR-001 — ACCO bills in US dollars only; the currency is never entered (CI-1). */
+const CURRENCY = 'USD';
 const TERMS = [
   { key: 'RECEIPT', days: 0 },
   { key: 'NET_15', days: 15 },
   { key: 'NET_30', days: 30 },
+  { key: 'NET_60', days: 60 },
   { key: 'CUSTOM', days: null },
 ] as const;
 type TermsKey = (typeof TERMS)[number]['key'];
@@ -68,6 +69,12 @@ function lineMinor(line: Pick<ManualInvoiceLineInput, 'quantity' | 'unitPrice'>)
   return Math.round((qtyThousandths * price) / 1000);
 }
 
+/** The client's own payment terms as a choice: a standard one, or Custom for any other day count. */
+function termsFromDays(days: number | null | undefined): TermsKey | null {
+  if (days === null || days === undefined) return null;
+  return TERMS.find((t) => t.days === days)?.key ?? 'CUSTOM';
+}
+
 function termsFromLabel(label: string | null): TermsKey {
   const found = TERMS.find((t) => t.key.replace('_', ' ').toLowerCase() === (label ?? '').toLowerCase());
   return found?.key ?? (label ? 'CUSTOM' : 'NET_15');
@@ -75,21 +82,30 @@ function termsFromLabel(label: string | null): TermsKey {
 
 /**
  * ADR-048 — a hand-typed invoice for a sale outside any construction contract (equipment hire,
- * surplus materials, services). Mirrors the approved form mockup: who and when, then the lines
- * (Tab moves across, Enter on the last field adds a line), totals at the chosen tax code, Save
- * draft. A missing client is added in a side sheet without leaving the invoice. Contract billing
- * is not here — it stays on the source picker (ADR-037).
+ * surplus materials, services), laid out like the document: bill-to and dates, the lines (Tab moves
+ * across, Enter on the last field adds a line), totals at the chosen tax code. The client's own
+ * payment terms are the default. Save and issue saves, then opens the invoice on its Issue step
+ * (journal preview and confirm); Save draft stops at the draft. A missing client is added in a
+ * side sheet without leaving the invoice.
  */
-export function ManualInvoiceForm({ invoice }: { invoice?: ClientInvoice }) {
+export function ManualInvoiceForm({
+  invoice,
+  typeSwitch,
+}: {
+  invoice?: ClientInvoice;
+  /** The New invoice type switch, shown in the form's header (create only). */
+  typeSwitch?: React.ReactNode;
+}) {
   const t = useTranslations('accounting.invoices.manual');
   const tCommon = useTranslations('common');
-  const tCreate = useTranslations('accounting.invoices.create');
   const summaryRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const clients = useClients();
   const accounts = useIncomeAccounts();
   const save = useSaveManualInvoice(invoice?.id);
   const taxError = useInvoiceTaxErrorMessage();
+  const approvalSettings = useApprovalSettings();
+  const ledgerBlocked = useLedgerBlocked();
 
   const today = todayWireDate();
   // "New sale invoice for …" (⌘K) arrives with the client chosen.
@@ -98,7 +114,9 @@ export function ManualInvoiceForm({ invoice }: { invoice?: ClientInvoice }) {
   const [invoiceDate, setInvoiceDate] = useState(invoice?.invoiceDate.slice(0, 10) ?? today);
   const [terms, setTerms] = useState<TermsKey>(termsFromLabel(invoice?.paymentTerms ?? null));
   const [customDue, setCustomDue] = useState(invoice?.dueDate?.slice(0, 10) ?? defaultDueDate(today, 15));
-  const [currency, setCurrency] = useState(invoice?.currencyCode ?? 'USD');
+  const [reference, setReference] = useState(invoice?.clientReference ?? '');
+  const [note, setNote] = useState(invoice?.notes ?? '');
+  const currency = CURRENCY;
   const defaultAccount = accounts.data?.[0]?.code ?? '';
   const [lines, setLines] = useState<LineDraft[]>(() =>
     invoice?.lines?.length
@@ -129,6 +147,12 @@ export function ManualInvoiceForm({ invoice }: { invoice?: ClientInvoice }) {
 
   const subtotalMinor = lines.reduce((sum, l) => sum + (lineMinor(l) ?? 0), 0);
   const totals = prepareTotals(fromMinorUnits(subtotalMinor, MONEY_SCALE), [], tax.rateFraction);
+  // Save and issue only where Issue would be offered on the invoice: a ready ledger, and a total
+  // under the amount that needs a second person's approval (ADR-046 §8).
+  const approvalAbove = approvalSettings.data?.invoiceApprovalAbove ?? null;
+  const totalMinor = totals.total ? (parseMinorUnits(totals.total, MONEY_SCALE) ?? 0) : 0;
+  const canIssueOnSave =
+    !ledgerBlocked && (approvalAbove === null || totalMinor < (parseMinorUnits(approvalAbove, MONEY_SCALE) ?? 0));
   const money = (value: string | null) => (value === null ? '—' : (formatMoney(value, currency, 'en') ?? value));
 
   // ── Validation (the server re-checks everything and lists its own problems) ────────────────
@@ -154,7 +178,7 @@ export function ManualInvoiceForm({ invoice }: { invoice?: ClientInvoice }) {
   const shownFor = (fieldId: string) => shownErrors.find((e) => e.fieldId === fieldId)?.message;
 
   // Unsaved changes: anything different from what the form opened with.
-  const snapshot = JSON.stringify({ clientId, invoiceDate, terms, customDue, currency, lines: lines.map((l) => [l.description, l.quantity, l.unitPrice, l.revenueAccountCode]) });
+  const snapshot = JSON.stringify({ clientId, invoiceDate, terms, customDue, reference, note, lines: lines.map((l) => [l.description, l.quantity, l.unitPrice, l.revenueAccountCode]) });
   const [initialSnapshot] = useState(snapshot);
   const dirty = snapshot !== initialSnapshot;
   const [confirmLeave, setConfirmLeave] = useState(false);
@@ -175,7 +199,7 @@ export function ManualInvoiceForm({ invoice }: { invoice?: ClientInvoice }) {
     if (index === lines.length - 1) addLine();
   };
 
-  async function submit() {
+  async function submit(thenIssue: boolean) {
     setAttempted(true);
     setServerProblems([]);
     if (fieldErrors.length > 0 || tax.blocked) {
@@ -188,6 +212,8 @@ export function ManualInvoiceForm({ invoice }: { invoice?: ClientInvoice }) {
       dueDate,
       currencyCode: currency,
       paymentTerms: t(`terms.${terms}`),
+      clientReference: reference.trim(),
+      notes: note.trim(),
       ...taxCodeBody(tax),
       lines: lines.map((l) => ({
         description: l.description.trim(),
@@ -198,7 +224,7 @@ export function ManualInvoiceForm({ invoice }: { invoice?: ClientInvoice }) {
     };
     try {
       const saved = await save.mutateAsync(payload);
-      router.push(`${LIST_HREF}/${saved.id}`);
+      router.push(`${LIST_HREF}/${saved.id}${thenIssue ? '?issue=1' : ''}`);
     } catch (error) {
       const fromServer = error instanceof ApiError ? error.details?.['problems'] : undefined;
       setServerProblems(
@@ -307,7 +333,8 @@ export function ManualInvoiceForm({ invoice }: { invoice?: ClientInvoice }) {
       noValidate
       onSubmit={(e) => {
         e.preventDefault();
-        void submit();
+        const submitter = (e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
+        void submit(submitter?.value === 'issue');
       }}
     >
       <FormActionBar
@@ -320,9 +347,16 @@ export function ManualInvoiceForm({ invoice }: { invoice?: ClientInvoice }) {
           </Button>
         }
         save={
-          <Button type="submit" disabled={save.isPending || tax.blocked}>
-            {save.isPending ? t('saving') : t('saveDraft')}
-          </Button>
+          <span className="flex gap-2">
+            {canIssueOnSave ? (
+              <Button type="submit" name="intent" value="draft" variant="outline" disabled={save.isPending || tax.blocked}>
+                {t('saveDraft')}
+              </Button>
+            ) : null}
+            <Button type="submit" name="intent" value={canIssueOnSave ? 'issue' : 'draft'} disabled={save.isPending || tax.blocked}>
+              {save.isPending ? t('saving') : canIssueOnSave ? t('saveAndIssue') : t('saveDraft')}
+            </Button>
+          </span>
         }
         discard={
           <Button type="button" variant="ghost" disabled={save.isPending} onClick={() => (dirty ? setConfirmLeave(true) : leave())}>
@@ -335,20 +369,12 @@ export function ManualInvoiceForm({ invoice }: { invoice?: ClientInvoice }) {
           dirty: tCommon('formState.dirty'),
           clean: tCommon('formState.clean'),
         }}
-        lifecycle={
-          <LifecycleStepper
-            steps={LIFECYCLE_KEYS.map((key) => ({ key, label: tCreate(`lifecycle.${key}`) }))}
-            current="DRAFT"
-            stepOfLabel={(n, total) => tCreate('stepOf', { n, total })}
-          />
-        }
       />
 
       <div className="space-y-8">
-        <header className="space-y-1">
-          <p className="text-caption font-semibold uppercase tracking-wide text-muted-foreground">{t('eyebrow')}</p>
+        <header className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-h2 font-semibold text-foreground">{invoice ? t('editTitle') : t('title')}</h2>
-          <p className="max-w-prose text-body-sm text-muted-foreground">{t('intro')}</p>
+          {typeSwitch}
         </header>
 
         <div ref={summaryRef} className="scroll-mt-32">
@@ -367,49 +393,63 @@ export function ManualInvoiceForm({ invoice }: { invoice?: ClientInvoice }) {
           />
         ) : null}
 
-        <FormGroup title={t('whoTitle')} description={t('whoSub')}>
-          <FormField htmlFor="manual-client" label={t('client')} required error={shownFor('manual-client')}>
-            <Combobox
-              id="manual-client"
-              value={clientId}
-              onChange={(next) => {
-                setClientId(next);
-                const c = (clients.data ?? []).find((x) => x.id === next);
-                if (c?.defaultCurrency) setCurrency(c.defaultCurrency);
-              }}
-              options={clientOptions}
-              placeholder={t('clientPlaceholder')}
-              searchPlaceholder={t('clientSearch')}
-              emptyLabel={t('clientEmpty')}
-              loading={clients.isPending}
-              loadingLabel={tCommon('loading')}
-              footerAction={{ label: (q) => (q ? t('createClientNamed', { name: q }) : t('createClient')), onSelect: (q) => setNewClientName(q) }}
-              invalid={Boolean(shownFor('manual-client'))}
-            />
-          </FormField>
-          <FormField htmlFor="manual-currency" label={t('currency')} hint={t('currencyHint')}>
-            <Input
-              id="manual-currency"
-              value={currency}
-              maxLength={3}
-              onChange={(e) => setCurrency(e.target.value.toUpperCase().replace(/[^A-Z]/g, ''))}
-              className="w-28 font-mono"
-            />
-          </FormField>
-          {client ? (
-            <p className="-mt-2 flex items-center gap-2 text-caption text-muted-foreground sm:col-span-2">
-              <Avatar name={client.name} size="sm" className={cn('rounded-control ring-0', entityTintClass(client.id))} />
-              {client.name}
-              {client.taxNumber ? ` · ${t('taxNumber', { number: client.taxNumber })}` : ''}
-            </p>
-          ) : null}
-          <FormField htmlFor="manual-date" label={t('invoiceDate')} required error={terms === 'CUSTOM' ? undefined : shownFor('manual-date')}>
-            <DatePicker id="manual-date" value={invoiceDate} onChange={setInvoiceDate} />
-          </FormField>
-          <div className="grid gap-4 sm:grid-cols-[auto_minmax(0,1fr)]">
-            <div>
+        <div className="grid gap-x-10 gap-y-5 rounded-panel border border-border bg-surface p-5 sm:p-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          <div className="space-y-2">
+            <FormField htmlFor="manual-client" label={t('billTo')} required error={shownFor('manual-client')}>
+              <Combobox
+                id="manual-client"
+                value={clientId}
+                onChange={(next) => {
+                  setClientId(next);
+                  // The client's own payment terms become the default (CI-6).
+                  const days = (clients.data ?? []).find((x) => x.id === next)?.paymentTermsDays;
+                  const fromClient = termsFromDays(days);
+                  if (fromClient) {
+                    setTerms(fromClient);
+                    if (fromClient === 'CUSTOM' && days) setCustomDue(defaultDueDate(invoiceDate, days));
+                  }
+                }}
+                options={clientOptions}
+                placeholder={t('clientPlaceholder')}
+                searchPlaceholder={t('clientSearch')}
+                emptyLabel={t('clientEmpty')}
+                loading={clients.isPending}
+                loadingLabel={tCommon('loading')}
+                footerAction={{ label: (q) => (q ? t('createClientNamed', { name: q }) : t('createClient')), onSelect: (q) => setNewClientName(q) }}
+                invalid={Boolean(shownFor('manual-client'))}
+              />
+            </FormField>
+            {client ? (
+              <p className="text-caption text-muted-foreground">
+                {[client.code, client.taxNumber ? t('taxNumber', { number: client.taxNumber }) : null].filter(Boolean).join(' · ')}
+              </p>
+            ) : null}
+            <FormField htmlFor="manual-reference" label={t('reference')}>
+              <Input
+                id="manual-reference"
+                value={reference}
+                onChange={(e) => setReference(e.target.value)}
+                maxLength={100}
+                placeholder={t('referencePlaceholder')}
+                autoComplete="off"
+              />
+            </FormField>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField htmlFor="manual-date" label={t('invoiceDate')} required error={terms === 'CUSTOM' ? undefined : shownFor('manual-date')}>
+              <DatePicker id="manual-date" value={invoiceDate} onChange={setInvoiceDate} />
+            </FormField>
+            <FormField htmlFor="manual-due" label={t('dueDate')} error={terms === 'CUSTOM' ? shownFor('manual-due') : undefined}>
+              {terms === 'CUSTOM' ? (
+                <DatePicker id="manual-due" value={customDue} onChange={setCustomDue} min={invoiceDate} />
+              ) : (
+                <Input id="manual-due" value={formatDate(dueDate) ?? dueDate} readOnly className="tabular-nums" />
+              )}
+            </FormField>
+            <div className="sm:col-span-2">
               <p id="manual-terms-label" className="mb-1.5 text-body-sm font-medium text-foreground">{t('termsLabel')}</p>
-              <div role="radiogroup" aria-labelledby="manual-terms-label" className="inline-flex overflow-hidden rounded-control border border-border-strong">
+              <div role="radiogroup" aria-labelledby="manual-terms-label" className="flex flex-wrap gap-1.5">
                 {TERMS.map((option) => (
                   <button
                     key={option.key}
@@ -418,8 +458,10 @@ export function ManualInvoiceForm({ invoice }: { invoice?: ClientInvoice }) {
                     aria-checked={terms === option.key}
                     onClick={() => setTerms(option.key)}
                     className={cn(
-                      'h-control whitespace-nowrap border-e border-border-strong px-2.5 text-body-sm last:border-e-0 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-primary',
-                      terms === option.key ? 'bg-brand-accent font-semibold text-brand-primary' : 'text-muted-foreground hover:bg-surface-hover',
+                      'h-9 whitespace-nowrap rounded-control border px-3 text-body-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary',
+                      terms === option.key
+                        ? 'border-brand-primary bg-brand-accent font-semibold text-brand-primary'
+                        : 'border-border-strong text-muted-foreground hover:bg-surface-hover',
                     )}
                   >
                     {t(`terms.${option.key}`)}
@@ -427,29 +469,11 @@ export function ManualInvoiceForm({ invoice }: { invoice?: ClientInvoice }) {
                 ))}
               </div>
             </div>
-            <FormField
-              htmlFor="manual-due"
-              label={t('dueDate')}
-              hint={terms === 'CUSTOM' ? undefined : t('dueHint')}
-              error={terms === 'CUSTOM' ? shownFor('manual-due') : undefined}
-            >
-              {terms === 'CUSTOM' ? (
-                <DatePicker id="manual-due" value={customDue} onChange={setCustomDue} min={invoiceDate} />
-              ) : (
-                <Input id="manual-due" value={formatDate(dueDate) ?? dueDate} readOnly className="tabular-nums" />
-              )}
-            </FormField>
           </div>
-          <div className="sm:col-span-2">
-            <InvoiceTaxField choice={tax} id="manual-tax" disabled={save.isPending} />
-          </div>
-        </FormGroup>
+        </div>
 
         <section className="space-y-4" aria-labelledby="manual-lines">
-          <div className="border-b border-border pb-2">
-            <h2 id="manual-lines" className="text-body font-semibold text-foreground">{t('linesTitle')}</h2>
-            <p className="text-caption text-muted-foreground">{t('linesSub')}</p>
-          </div>
+          <h3 id="manual-lines" className="border-b border-border pb-2 text-body font-semibold text-foreground">{t('linesTitle')}</h3>
 
           {accounts.data && accounts.data.length === 0 ? (
             <Alert variant="warning" messages={[t('noIncomeAccounts')]} />
@@ -470,7 +494,21 @@ export function ManualInvoiceForm({ invoice }: { invoice?: ClientInvoice }) {
             removeLabel={(i) => t('removeLine', { n: i + 1 })}
           />
 
-          <dl className="ms-auto w-full max-w-xs space-y-1.5 text-body-sm">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+          <div className="w-full space-y-4 lg:max-w-sm">
+            <InvoiceTaxField choice={tax} id="manual-tax" disabled={save.isPending} />
+            <FormField htmlFor="manual-note" label={t('note')}>
+              <Textarea
+                id="manual-note"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                maxLength={1000}
+                rows={3}
+                placeholder={t('notePlaceholder')}
+              />
+            </FormField>
+          </div>
+          <dl className="w-full space-y-1.5 text-body-sm lg:max-w-xs">
             <div className="flex justify-between">
               <dt className="text-muted-foreground">{t('subtotal')}</dt>
               <dd className="tabular-nums">{money(totals.subtotal)}</dd>
@@ -486,6 +524,7 @@ export function ManualInvoiceForm({ invoice }: { invoice?: ClientInvoice }) {
               <dd className="tabular-nums">{money(totals.total)}</dd>
             </div>
           </dl>
+          </div>
         </section>
       </div>
 
@@ -513,7 +552,6 @@ export function ManualInvoiceForm({ invoice }: { invoice?: ClientInvoice }) {
             onCreated={(created) => {
               void clients.refetch();
               setClientId(created.id);
-              if (created.defaultCurrency) setCurrency(created.defaultCurrency);
               setNewClientName(null);
             }}
             onCancel={() => setNewClientName(null)}

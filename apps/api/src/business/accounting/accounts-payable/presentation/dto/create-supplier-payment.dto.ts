@@ -1,8 +1,9 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsString, IsNotEmpty, IsDateString, IsArray, IsOptional,
-  IsNumber, Min, ValidateNested, MaxLength,
+  IsNumber, Min, ValidateNested, MaxLength, IsIn,
 } from 'class-validator';
+import { SUPPLIER_PAYMENT_METHODS } from '../../domain/supplier-payment-rules.js';
 import { Type } from 'class-transformer';
 
 export class PaymentAllocationDto {
@@ -41,13 +42,29 @@ export class CreateSupplierPaymentDto {
   @IsNumber() @Min(0.01)
   totalAmount!: number;
 
-  @ApiProperty({ example: 'BANK_TRANSFER' })
-  @IsString() @IsNotEmpty() @MaxLength(50)
+  @ApiProperty({ enum: SUPPLIER_PAYMENT_METHODS, example: 'BANK_TRANSFER' })
+  @IsIn(SUPPLIER_PAYMENT_METHODS as unknown as string[], { message: 'Choose how the supplier was paid: bank transfer, cheque, cash, mobile money or card.' })
   paymentMethod!: string;
 
-  @ApiPropertyOptional({ example: 'TRF-2025-001' })
+  @ApiPropertyOptional({ example: 'TRF-2025-001', description: 'The cheque number, transfer reference, transaction ID or cash receipt number' })
   @IsString() @IsOptional() @MaxLength(100)
   bankReference?: string;
+
+  @ApiPropertyOptional({ example: '2026-10-30', description: 'SP-3: cheque date (cheque only)' })
+  @IsDateString() @IsOptional()
+  instrumentDate?: string;
+
+  @ApiPropertyOptional({ example: 'EVC_PLUS', description: 'SP-3: mobile-money provider (mobile money only)' })
+  @IsString() @IsOptional() @MaxLength(20)
+  provider?: string;
+
+  @ApiPropertyOptional({ description: "SP-3: the supplier's account number or phone paid to" })
+  @IsString() @IsOptional() @MaxLength(50)
+  payeeAccount?: string;
+
+  @ApiPropertyOptional({ description: 'SP-3: the name on the cheque or account, or who took the cash' })
+  @IsString() @IsOptional() @MaxLength(150)
+  payeeName?: string;
 
   @ApiPropertyOptional()
   @IsString() @IsOptional() @MaxLength(500)

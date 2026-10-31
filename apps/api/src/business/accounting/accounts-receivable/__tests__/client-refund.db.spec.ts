@@ -19,6 +19,7 @@ import { AccountRepository } from '../../accounting-core/infrastructure/account.
 import { ClientRefundService } from '../application/client-refund.service';
 import { ClientStatementService } from '../application/client-statement.service';
 import { ClientStatementRepository } from '../infrastructure/client-statement.repository';
+import { transferProof } from '../../__tests__/helpers/payment-proof';
 
 const prisma = new PrismaClient();
 let env: AccountingTestEnv;
@@ -49,6 +50,7 @@ beforeAll(async () => {
   await svc.clientInvoiceService.issue(env.identity, inv.id); // 1050
   // Paid 3,000: 1,050 applied, 1,950 on account.
   const receipt = await svc.customerReceiptService.receive(env.identity, {
+    ...transferProof(),
     clientId: env.clientId, bankAccountId: env.bankAccountId, receiptDate: day, amount: '3000.00', currency: 'USD', reference: 'TT-OVER',
     allocations: [{ clientInvoiceId: inv.id, amount: 1050 }],
   });

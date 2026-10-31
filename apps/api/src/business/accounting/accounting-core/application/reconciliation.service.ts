@@ -7,14 +7,18 @@ import { JournalRepository } from '../infrastructure/journal.repository.js';
 import { pendingPaymentHoldsTotal } from '../../accounts-payable/infrastructure/pending-payment-holds.repository.js';
 
 export interface ControlAccountCheck {
+  accountId: string;
   accountCode: string;
   accountName: string;
-  subledgerType: 'AR' | 'AP' | 'BANK';
+  subledgerType: 'AR' | 'AP';
+  /** On the account's own side: receivables in debit, payables in credit. A negative is wrong. */
   glBalance: string;
   subledgerBalance: string;
+  /** Books less documents, signed. */
   variance: string;
   reconciled: boolean;
-  periodId?: string;
+  /** Open invoices or bills making up the documents' side. */
+  documentCount: number;
 }
 
 export interface ReconciliationReport {
@@ -25,6 +29,8 @@ export interface ReconciliationReport {
   blocksClose: boolean;
 }
 
+const TOLERANCE = new Decimal('0.01');
+
 @Injectable()
 export class ReconciliationService {
   constructor(
@@ -34,120 +40,85 @@ export class ReconciliationService {
   ) {}
 
   /**
-   * Run full control account reconciliation.
-   * AR GL = ∑ open client invoice outstanding amounts
-   * AP GL = ∑ open supplier bill outstanding amounts
-   * Bank GL = verified via journal lines only (bank statement reconciliation is Phase 3)
-   *
-   * Variance > 0.01 flags as unreconciled and blocks period close
-   * when PostingPolicy.requireBankReviewBeforeClose = true.
+   * GL-L — does each control account agree with the documents behind it, today?
+   *   AR: the receivable control accounts against what open client invoices still owe
+   *   AP: the payable control accounts against what open bills still owe (plus bills held by an
+   *       unposted payment, which are still owed until it posts)
+   * Balances keep their sign: a receivable in credit is a fault, not a match. The control accounts
+   * are found from the chart; codes may still be given to name them.
    */
   async runFullReconciliation(
     identity: RequestIdentity,
-    opts: {
-      arAccountCode: string;
-      apAccountCode: string;
-      bankAccountCodes?: string[];
-      periodId?: string;
-    },
+    opts: { arAccountCode?: string; apAccountCode?: string } = {},
   ): Promise<ReconciliationReport> {
     const prisma = this.tenancyService.getClient();
     const { activeOrganizationId: orgId } = identity;
-
     const checks: ControlAccountCheck[] = [];
 
-    // ── AR Reconciliation ──────────────────────────────────────────────────────
-    const arAccount = await this.accountRepo.findByCode(prisma, orgId, opts.arAccountCode);
-    if (arAccount) {
-      const arGlBalance = (await this.journalRepo.getGlBalance(prisma, orgId, arAccount.id)).abs();
+    const controls = async (code: string | undefined, kind: 'ACCOUNTS_RECEIVABLE' | 'ACCOUNTS_PAYABLE') => {
+      if (code) {
+        const one = await this.accountRepo.findByCode(prisma, orgId, code);
+        return one ? [one] : [];
+      }
+      const all = (await this.accountRepo.findAll(prisma, orgId)).filter((a) => a.status === 'ACTIVE' && a.versions[0]?.isControlAccount);
+      // The account marked as controlling the subledger; failing that, a control account of the subtype.
+      const marked = all.filter((a) => a.versions[0]?.controlledSubledgerType === kind);
+      return marked.length > 0 ? marked : all.filter((a) => a.versions[0]?.accountSubtype === kind);
+    };
 
-      const arAgg = await prisma.clientInvoice.aggregate({
-        where: {
-          organizationId: orgId,
-          postingStatus: { in: ['POSTED', 'OPENING_BALANCE'] },
-        },
-        _sum: { outstandingAmount: true },
-      });
-      const arSubledger = new Decimal(arAgg._sum.outstandingAmount?.toString() ?? '0');
-      const arVariance = arGlBalance.minus(arSubledger).abs();
+    const check = async (
+      accounts: Awaited<ReturnType<typeof controls>>,
+      type: 'AR' | 'AP',
+      documents: { total: Decimal; count: number },
+    ) => {
+      for (const account of accounts) {
+        const net = await this.journalRepo.getGlBalance(prisma, orgId, account.id);
+        const gl = type === 'AR' ? net : net.negated();
+        // With more than one control account of a kind, the documents are compared once, against the first.
+        const docs = account === accounts[0] ? documents : { total: new Decimal(0), count: 0 };
+        const variance = gl.minus(docs.total);
+        checks.push({
+          accountId: account.id,
+          accountCode: account.code,
+          accountName: account.versions[0]?.name ?? account.code,
+          subledgerType: type,
+          glBalance: gl.toFixed(2),
+          subledgerBalance: docs.total.toFixed(2),
+          variance: variance.toFixed(2),
+          reconciled: variance.abs().lte(TOLERANCE),
+          documentCount: docs.count,
+        });
+      }
+    };
 
-      const currentVersion = arAccount.versions[0];
-      checks.push({
-        accountCode: arAccount.code,
-        accountName: currentVersion?.name ?? arAccount.code,
-        subledgerType: 'AR',
-        glBalance: arGlBalance.toFixed(2),
-        subledgerBalance: arSubledger.toFixed(2),
-        variance: arVariance.toFixed(2),
-        reconciled: arVariance.lte(new Decimal('0.01')),
-        periodId: opts.periodId,
-      });
-    }
+    const ar = await prisma.clientInvoice.aggregate({
+      where: { organizationId: orgId, postingStatus: { in: ['POSTED', 'OPENING_BALANCE'] }, outstandingAmount: { not: 0 } },
+      _sum: { outstandingAmount: true },
+      _count: true,
+    });
+    await check(await controls(opts.arAccountCode, 'ACCOUNTS_RECEIVABLE'), 'AR', {
+      total: new Decimal(ar._sum.outstandingAmount?.toString() ?? '0'),
+      count: ar._count,
+    });
 
-    // ── AP Reconciliation ──────────────────────────────────────────────────────
-    const apAccount = await this.accountRepo.findByCode(prisma, orgId, opts.apAccountCode);
-    if (apAccount) {
-      const apGlBalance = (await this.journalRepo.getGlBalance(prisma, orgId, apAccount.id)).abs();
-
-      const apAgg = await prisma.supplierBill.aggregate({
-        where: {
-          organizationId: orgId,
-          postingStatus: { in: ['POSTED', 'OPENING_BALANCE'] },
-        },
-        _sum: { outstandingAmount: true },
-      });
-      // AP-1 — a bill held by an unposted payment is still owed: the ledger moves when it posts.
-      const apSubledger = new Decimal(apAgg._sum.outstandingAmount?.toString() ?? '0')
-        .plus(await pendingPaymentHoldsTotal(prisma as never, orgId));
-      const apVariance = apGlBalance.minus(apSubledger).abs();
-
-      const currentVersion = apAccount.versions[0];
-      checks.push({
-        accountCode: apAccount.code,
-        accountName: currentVersion?.name ?? apAccount.code,
-        subledgerType: 'AP',
-        glBalance: apGlBalance.toFixed(2),
-        subledgerBalance: apSubledger.toFixed(2),
-        variance: apVariance.toFixed(2),
-        reconciled: apVariance.lte(new Decimal('0.01')),
-        periodId: opts.periodId,
-      });
-    }
-
-    // ── Bank GL checks (internal — statement reconciliation is Phase 3) ────────
-    for (const bankCode of opts.bankAccountCodes ?? []) {
-      const bankAccount = await this.accountRepo.findByCode(prisma, orgId, bankCode);
-      if (!bankAccount) continue;
-
-      const bankGlBalance = await this.journalRepo.getGlBalance(prisma, orgId, bankAccount.id);
-
-      const bankConfig = await prisma.bankAccount.findFirst({
-        where: { organizationId: orgId, glAccountId: bankAccount.id },
-        select: { accountName: true },
-      });
-
-      const currentVersion = bankAccount.versions[0];
-      checks.push({
-        accountCode: bankAccount.code,
-        accountName: bankConfig?.accountName ?? currentVersion?.name ?? bankCode,
-        subledgerType: 'BANK',
-        glBalance: bankGlBalance.toFixed(2),
-        subledgerBalance: bankGlBalance.toFixed(2),
-        variance: '0.00',
-        reconciled: true,
-        periodId: opts.periodId,
-      });
-    }
+    const ap = await prisma.supplierBill.aggregate({
+      where: { organizationId: orgId, postingStatus: { in: ['POSTED', 'OPENING_BALANCE'] }, outstandingAmount: { not: 0 } },
+      _sum: { outstandingAmount: true },
+      _count: true,
+    });
+    // AP-1 — a bill held by an unposted payment is still owed: the ledger moves when it posts.
+    await check(await controls(opts.apAccountCode, 'ACCOUNTS_PAYABLE'), 'AP', {
+      total: new Decimal(ap._sum.outstandingAmount?.toString() ?? '0').plus(await pendingPaymentHoldsTotal(prisma as never, orgId)),
+      count: ap._count,
+    });
 
     const allReconciled = checks.every((c) => c.reconciled);
-    const unreconciledItems = checks.filter((c) => !c.reconciled);
-
     return {
       organizationId: orgId,
       generatedAt: new Date().toISOString(),
       checks,
       allReconciled,
-      blocksClose: !allReconciled && unreconciledItems.length > 0,
+      blocksClose: !allReconciled,
     };
   }
 
@@ -225,7 +196,6 @@ export class ReconciliationService {
     const reconReport = await this.runFullReconciliation(identity, {
       arAccountCode: opts.arAccountCode,
       apAccountCode: opts.apAccountCode,
-      periodId,
     });
     for (const check of reconReport.checks) {
       if (!check.reconciled) {

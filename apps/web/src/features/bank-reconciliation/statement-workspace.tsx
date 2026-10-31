@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
@@ -39,6 +40,7 @@ export function StatementWorkspace({ id }: { id: string }) {
   const [matching, setMatching] = useState<BankStatementLineView | null>(null);
   const [posting, setPosting] = useState<BankStatementLineView | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const [undoing, setUndoing] = useState<BankStatementLineView | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const apply = (w: BankStatementWorkspace) => {
@@ -66,8 +68,28 @@ export function StatementWorkspace({ id }: { id: string }) {
   const suggested = w.lines.filter((l) => l.matchStatus === 'UNMATCHED' && l.suggestion).length;
   const r = w.reconciliation;
 
+  const lineActions = (l: BankStatementLineView) => (
+    <div className="inline-flex flex-wrap justify-end gap-1">
+      {l.matchStatus === 'UNMATCHED' ? (
+        <>
+          {l.suggestion ? (
+            <Button size="sm" variant="outline" onClick={() => act.mutate(() => bankStatementsApi.match(id, l.id, l.suggestion!.journalLineId))}>
+              {t('accept')}
+            </Button>
+          ) : null}
+          <Button size="sm" variant="ghost" onClick={() => setMatching(l)}>{t('match')}</Button>
+          <Button size="sm" variant="ghost" onClick={() => setPosting(l)}>{t('post')}</Button>
+        </>
+      ) : l.matchStatus === 'MATCHED' ? (
+        <Button size="sm" variant="ghost" onClick={() => act.mutate(() => bankStatementsApi.unmatch(id, l.id))}>{t('unmatch')}</Button>
+      ) : (
+        <Button size="sm" variant="ghost" onClick={() => setUndoing(l)}>{t('undo')}</Button>
+      )}
+    </div>
+  );
+
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       <ListPageHeader
         eyebrow={`${w.statement.bankName} · ${w.statement.accountName}`}
         title={t('title', { from: date(w.statement.periodStart), to: date(w.statement.statementDate) })}
@@ -100,6 +122,10 @@ export function StatementWorkspace({ id }: { id: string }) {
         />
       </div>
 
+      {open && w.earlierOpenStatementDate ? (
+        <Notice tone="attention" title={t('earlierOpenTitle')}>{t('earlierOpenBody', { date: date(w.earlierOpenStatementDate) })}</Notice>
+      ) : null}
+
       {w.previousClosing !== null && w.previousClosing !== w.statement.openingBalance ? (
         <Notice tone="attention">{t('openingMismatch', { previous: usd(w.previousClosing), opening: usd(w.statement.openingBalance) })}</Notice>
       ) : null}
@@ -113,7 +139,28 @@ export function StatementWorkspace({ id }: { id: string }) {
         </div>
       ) : null}
 
-      <section className="overflow-x-auto rounded-panel border border-border bg-surface" aria-label={t('linesTitle')}>
+      <section className="min-w-0 rounded-panel border border-border bg-surface" aria-label={t('linesTitle')}>
+        <ul className="divide-y divide-border sm:hidden">
+          <li className="px-4 py-3 text-body font-semibold text-foreground">{t('linesTitle')}</li>
+          {w.lines.map((l) => (
+            <li key={l.id} className="space-y-1.5 px-4 py-3 text-body-sm">
+              <div className="flex items-start justify-between gap-3">
+                <span className="min-w-0">
+                  <span className="block font-medium text-foreground">{l.description}</span>
+                  <span className="block text-caption text-muted-foreground">{[date(l.transactionDate), l.reference].filter(Boolean).join(' · ')}</span>
+                </span>
+                <span className="shrink-0 font-medium tabular-nums">{usd(l.amount)}</span>
+              </div>
+              <div>
+                <StatusPill tone={STATUS_TONE[l.matchStatus]}>{t(`matchStatus.${l.matchStatus}`)}</StatusPill>
+                {l.matched ? <LedgerRef line={l.matched} /> : null}
+                {!l.matched && l.suggestion ? <span className="mt-0.5 block text-caption text-brand-primary">{t('suggested', { line: ledgerText(l.suggestion) })}</span> : null}
+              </div>
+              {editable ? <div className="-ms-2">{lineActions(l)}</div> : null}
+            </li>
+          ))}
+        </ul>
+        <div className="hidden overflow-x-auto sm:block">
         <table className="w-full min-w-[760px] text-body-sm">
           <caption className="px-4 py-3 text-start text-body font-semibold text-foreground">{t('linesTitle')}</caption>
           <thead>
@@ -136,62 +183,29 @@ export function StatementWorkspace({ id }: { id: string }) {
                 <td className={cn('px-3 py-2 text-end tabular-nums', Number(l.amount) < 0 && 'text-foreground')}>{usd(l.amount)}</td>
                 <td className="px-3 py-2">
                   <StatusPill tone={STATUS_TONE[l.matchStatus]}>{t(`matchStatus.${l.matchStatus}`)}</StatusPill>
-                  {l.matched ? <span className="mt-0.5 block text-caption text-muted-foreground">{ledgerText(l.matched)}</span> : null}
+                  {l.matched ? <LedgerRef line={l.matched} /> : null}
                   {!l.matched && l.suggestion ? (
                     <span className="mt-0.5 block text-caption text-brand-primary">{t('suggested', { line: ledgerText(l.suggestion) })}</span>
                   ) : null}
                 </td>
                 {editable ? (
                   <td className="px-4 py-2 text-end">
-                    <div className="inline-flex flex-wrap justify-end gap-1">
-                      {l.matchStatus === 'UNMATCHED' ? (
-                        <>
-                          {l.suggestion ? (
-                            <Button size="sm" variant="outline" onClick={() => act.mutate(() => bankStatementsApi.match(id, l.id, l.suggestion!.journalLineId))}>
-                              {t('accept')}
-                            </Button>
-                          ) : null}
-                          <Button size="sm" variant="ghost" onClick={() => setMatching(l)}>{t('match')}</Button>
-                          <Button size="sm" variant="ghost" onClick={() => setPosting(l)}>{t('post')}</Button>
-                        </>
-                      ) : l.matchStatus === 'MATCHED' ? (
-                        <Button size="sm" variant="ghost" onClick={() => act.mutate(() => bankStatementsApi.unmatch(id, l.id))}>{t('unmatch')}</Button>
-                      ) : null}
-                    </div>
+                    {lineActions(l)}
                   </td>
                 ) : null}
               </tr>
             ))}
           </tbody>
         </table>
+        </div>
       </section>
 
-      <section className="rounded-panel border border-border bg-surface" aria-label={t('unclearedTitle')}>
-        <h2 className="px-4 py-3 text-body font-semibold text-foreground">{t('unclearedTitle')}</h2>
-        {w.uncleared.length === 0 ? (
-          <p className="border-t border-border px-4 py-3 text-body-sm text-muted-foreground">{t('unclearedNone')}</p>
-        ) : (
-          <ul className="divide-y divide-border border-t border-border">
-            {w.uncleared.map((u) => (
-              <li key={u.journalLineId} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 py-2 text-body-sm">
-                <span className="min-w-0">
-                  {ledgerText(u)}
-                  {u.description ? <span className="block truncate text-caption text-muted-foreground">{u.description}</span> : null}
-                </span>
-                <span className="text-end">
-                  <span className="block tabular-nums">{usd(u.amount)}</span>
-                  {u.broughtForward ? <span className="block text-caption text-muted-foreground">{t('broughtForward')}</span> : null}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <UnclearedSection lines={w.uncleared} />
 
       {matching ? (
         <MatchSheet
           line={matching}
-          candidates={w.uncleared.filter((u) => u.amount === matching.amount)}
+          candidates={w.uncleared.filter((u) => u.amount === matching.amount && !u.cancelledOut)}
           onClose={() => setMatching(null)}
           onMatch={(journalLineId) => {
             act.mutate(() => bankStatementsApi.match(id, matching.id, journalLineId));
@@ -210,6 +224,19 @@ export function StatementWorkspace({ id }: { id: string }) {
         />
       ) : null}
       <ConfirmDialog
+        open={undoing !== null}
+        onOpenChange={(o) => { if (!o) setUndoing(null); }}
+        title={t('undoTitle')}
+        description={t('undoBody', { amount: usd(undoing?.amount ?? '0') })}
+        confirmLabel={t('undo')}
+        cancelLabel={t('cancel')}
+        isPending={act.isPending}
+        onConfirm={() => {
+          const line = undoing!;
+          act.mutate(() => bankStatementsApi.undo(id, line.id), { onSettled: () => setUndoing(null) });
+        }}
+      />
+      <ConfirmDialog
         open={confirmRemove}
         onOpenChange={setConfirmRemove}
         title={t('removeTitle')}
@@ -226,6 +253,60 @@ export function StatementWorkspace({ id }: { id: string }) {
 
 function ledgerText(l: BankLedgerLine): string {
   return `${l.journalNumber ?? '—'} · ${date(l.accountingDate)}`;
+}
+
+/** The ledger entry a line matched: its journal (opening it) and what it was. */
+function LedgerRef({ line }: { line: BankLedgerLine }) {
+  return (
+    <span className="mt-0.5 block text-caption text-muted-foreground">
+      <Link href={`/finance/accounting/journals/${line.journalEntryId}`} className="font-mono hover:text-foreground hover:underline">{line.journalNumber ?? '—'}</Link>
+      {' · '}{date(line.accountingDate)}
+      {line.description ? <span className="block truncate">{line.description}</span> : null}
+    </span>
+  );
+}
+
+/**
+ * Ledger entries not on a statement yet: what the bank has still to show (outstanding), what was
+ * there before reconciliation began, and entries recorded then reversed (they cancel out).
+ */
+function UnclearedSection({ lines }: { lines: BankLedgerLine[] }) {
+  const t = useTranslations('finance.bankRec.workspace');
+  const groups = [
+    { key: 'outstanding', title: t('unclearedTitle'), rows: lines.filter((l) => !l.cancelledOut && !l.broughtForward) },
+    { key: 'broughtForward', title: t('broughtForwardTitle'), rows: lines.filter((l) => !l.cancelledOut && l.broughtForward) },
+    { key: 'cancelled', title: t('cancelledTitle'), rows: lines.filter((l) => l.cancelledOut) },
+  ];
+  return (
+    <section className="rounded-panel border border-border bg-surface" aria-label={t('unclearedTitle')}>
+      {groups.map((g, i) =>
+        g.rows.length === 0 && i > 0 ? null : (
+          <div key={g.key} className={cn(i > 0 && 'border-t border-border')}>
+            <h2 className="px-4 py-3 text-body font-semibold text-foreground">
+              {g.title}
+              {g.key === 'cancelled' ? <span className="block text-caption font-normal text-muted-foreground">{t('cancelledNote')}</span> : null}
+            </h2>
+            {g.rows.length === 0 ? (
+              <p className="border-t border-border px-4 py-3 text-body-sm text-muted-foreground">{t('unclearedNone')}</p>
+            ) : (
+              <ul className="divide-y divide-border border-t border-border">
+                {g.rows.map((u) => (
+                  <li key={u.journalLineId} className={cn('flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 py-2 text-body-sm', g.key === 'cancelled' && 'text-muted-foreground')}>
+                    <span className="min-w-0">
+                      <Link href={`/finance/accounting/journals/${u.journalEntryId}`} className="font-mono hover:underline">{u.journalNumber ?? '—'}</Link>
+                      {' · '}{date(u.accountingDate)}
+                      {u.description ? <span className="block truncate text-caption text-muted-foreground">{u.description}</span> : null}
+                    </span>
+                    <span className="tabular-nums">{usd(u.amount)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ),
+      )}
+    </section>
+  );
 }
 
 function MatchSheet({ line, candidates, onClose, onMatch }: {

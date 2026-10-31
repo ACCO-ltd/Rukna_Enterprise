@@ -59,16 +59,20 @@ function build(bills: BillSeed[]) {
       if (!b || b.organizationId !== orgId) return Promise.resolve(null);
       return Promise.resolve(b);
     }),
-    updateOutstandingAmount: jest
-      .fn()
-      .mockImplementation((_tx: unknown, id: string, amount: Decimal) => {
-        const b = store.get(id);
-        if (b) b.outstandingAmount = amount;
-        return Promise.resolve(b);
-      }),
   };
+  // SP-1 — the bill's balance falls by a guarded decrement, as the real transaction does.
+  const settle = jest.fn().mockImplementation(
+    ({ where, data }: { where: { id: string; outstandingAmount: { gte: Decimal } }; data: { outstandingAmount: { decrement: Decimal } } }) => {
+      const b = store.get(where.id);
+      if (!b || b.outstandingAmount.lt(where.outstandingAmount.gte)) return Promise.resolve({ count: 0 });
+      b.outstandingAmount = b.outstandingAmount.minus(data.outstandingAmount.decrement);
+      return Promise.resolve({ count: 1 });
+    },
+  );
   const prisma = {
-    supplier: { findFirst: jest.fn().mockResolvedValue({ createdBy: 'vendor-maintainer' }) },
+    supplier: { findFirst: jest.fn().mockResolvedValue({ createdBy: 'vendor-maintainer', status: 'ACTIVE' }) },
+    supplierBill: { updateMany: settle },
+    supplierPayment: { findFirst: jest.fn().mockResolvedValue(null) },
     bankAccount: { findFirst: jest.fn().mockResolvedValue({ accountName: 'Bank', status: 'ACTIVE', allowsPayments: true, currencyCode: 'USD', glAccount: { id: 'acct-10200', code: '10200' } }) },
     $transaction: async (cb: (tx: unknown) => unknown) => cb(prisma),
   };
@@ -87,7 +91,7 @@ function build(bills: BillSeed[]) {
     {} as never, // signatoryService
     {} as never, // purchaseOrderService
   );
-  return { svc, paymentRepo, billRepo, store, createdPayment };
+  return { svc, paymentRepo, billRepo, settle, store, createdPayment };
 }
 
 const baseDto = {
@@ -100,7 +104,7 @@ const baseDto = {
 
 describe('SupplierPaymentService.create — allocate-on-create (A16 / D9)', () => {
   it('full settlement: allocation == outstanding → bill outstanding becomes 0', async () => {
-    const { svc, billRepo, store, createdPayment } = build([
+    const { svc, settle, store, createdPayment } = build([
       { id: 'b1', supplierId: 's1', currencyCode: 'USD', outstandingAmount: 1000 },
     ]);
 
@@ -111,7 +115,7 @@ describe('SupplierPaymentService.create — allocate-on-create (A16 / D9)', () =
     });
 
     expect(store.get('b1')!.outstandingAmount.toFixed(2)).toBe('0.00');
-    expect(billRepo.updateOutstandingAmount).toHaveBeenCalledTimes(1);
+    expect(settle).toHaveBeenCalledTimes(1);
     // Fully applied → no unapplied advance.
     expect((createdPayment.allocatedAmount as Decimal).toFixed(2)).toBe('1000.00');
     expect((createdPayment.unallocatedAmount as Decimal).toFixed(2)).toBe('0.00');
@@ -132,7 +136,7 @@ describe('SupplierPaymentService.create — allocate-on-create (A16 / D9)', () =
   });
 
   it('one payment across multiple bills allocates to each correctly', async () => {
-    const { svc, billRepo, store, createdPayment } = build([
+    const { svc, settle, store, createdPayment } = build([
       { id: 'b1', supplierId: 's1', currencyCode: 'USD', outstandingAmount: 1000 },
       { id: 'b2', supplierId: 's1', currencyCode: 'USD', outstandingAmount: 500 },
     ]);
@@ -148,7 +152,7 @@ describe('SupplierPaymentService.create — allocate-on-create (A16 / D9)', () =
 
     expect(store.get('b1')!.outstandingAmount.toFixed(2)).toBe('0.00');
     expect(store.get('b2')!.outstandingAmount.toFixed(2)).toBe('200.00');
-    expect(billRepo.updateOutstandingAmount).toHaveBeenCalledTimes(2);
+    expect(settle).toHaveBeenCalledTimes(2);
     expect((createdPayment.allocatedAmount as Decimal).toFixed(2)).toBe('1300.00');
     expect((createdPayment.unallocatedAmount as Decimal).toFixed(2)).toBe('200.00');
   });
@@ -172,11 +176,11 @@ describe('SupplierPaymentService.create — allocate-on-create (A16 / D9)', () =
   });
 
   it('pure advance: no allocations → whole amount is the unallocated advance', async () => {
-    const { svc, billRepo, createdPayment } = build([]);
+    const { svc, settle, createdPayment } = build([]);
 
     await svc.create(identity, { ...baseDto, totalAmount: 750 });
 
-    expect(billRepo.updateOutstandingAmount).not.toHaveBeenCalled();
+    expect(settle).not.toHaveBeenCalled();
     expect((createdPayment.allocatedAmount as Decimal).toFixed(2)).toBe('0.00');
     expect((createdPayment.unallocatedAmount as Decimal).toFixed(2)).toBe('750.00');
   });
@@ -222,7 +226,7 @@ describe('SupplierPaymentService.create — allocate-on-create (A16 / D9)', () =
 
 describe('SupplierPaymentService.create — allocation validation (A16 / D9)', () => {
   it('rejects over-allocation: Σ allocations > payment amount', async () => {
-    const { svc, billRepo } = build([
+    const { svc, settle } = build([
       { id: 'b1', supplierId: 's1', currencyCode: 'USD', outstandingAmount: 5000 },
     ]);
 
@@ -234,7 +238,7 @@ describe('SupplierPaymentService.create — allocation validation (A16 / D9)', (
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
     // Rejected before any bill mutation.
-    expect(billRepo.updateOutstandingAmount).not.toHaveBeenCalled();
+    expect(settle).not.toHaveBeenCalled();
   });
 
   it('rejects an allocation larger than that bill outstanding', async () => {

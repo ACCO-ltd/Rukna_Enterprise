@@ -842,23 +842,20 @@
     "eyebrow": "Payables",
     "create": {
       "title": "New bill",
-      "intro": "The number is assigned when you save. Submitting, approving and posting happen after saving, as separate commands.",
       "save": "Save bill",
       "saving": "Saving…",
       "discard": "Discard",
       "kindLabel": "What is this bill for?",
       "kindPo": "Against a purchase order",
-      "kindPoDescription": "Lines come from the purchase order and are matched to goods receipts.",
+      "kindPoDescription": "Lines come from the order and are matched to what was received.",
       "kindDirect": "Direct expense",
-      "kindDirectDescription": "No purchase order — matching doesn't apply. You choose the expense profiles.",
+      "kindDirectDescription": "Rent, services, utilities and one-off purchases.",
       "detailsTitle": "Supplier and invoice",
-      "detailsDescription": "Who sent the bill, and how they numbered it.",
       "datesTitle": "Dates",
-      "datesDescription": "When the bill was issued and when it has to be paid.",
       "supplier": "Supplier",
       "invoiceNumber": "Supplier invoice number",
       "invoiceNumberHint": "As printed on the supplier's invoice.",
-      "duplicate": "{number} is already recorded on {bill}. The server will not accept a second bill with this number from this supplier — check this isn't a duplicate.",
+      "duplicate": "{number} is already recorded on {bill}. Check this is not the same invoice entered twice.",
       "aDraftBill": "a draft bill",
       "purchaseOrder": "Purchase order",
       "project": "Project",
@@ -872,7 +869,6 @@
       "linesTitle": "Lines",
       "linesLabel": "Bill lines",
       "linesPoDescription": "One line per order line. Enter what this invoice bills.",
-      "linesDirectDescription": "What the supplier is charging for, and where each cost posts.",
       "choosePoFirst": "Choose a purchase order to load its lines.",
       "col": {
         "item": "Item",
@@ -901,7 +897,6 @@
       "overReceived": "Billing {qty} {unit} more than received on {grn} — the match will likely raise an exception.",
       "overReceivedNothing": "Billing {qty} {unit} and nothing has been received on this line yet — the match will likely raise an exception.",
       "overOrdered": "Billing {qty} {unit} more than ordered — the match will likely raise an exception.",
-      "totalsNote": "A preview. The server calculates the totals it records from the lines.",
       "resetNet": "Use qty × price",
       "netDiffers": "Amount is {diff} {direction, select, more {more} other {less}} than {qty} × {price} ({computed}). The amount you typed is what posts.",
       "failed": "The bill could not be saved.",
@@ -1026,12 +1021,14 @@
       "toApprove": "To approve",
       "toPost": "To post",
       "overdue": "Overdue",
-      "drafts": "Drafts"
+      "drafts": "Drafts",
+      "unpaid": "Unpaid",
+      "paid": "Paid"
     },
     "listState": {
       "DRAFT": "Draft",
       "AWAITING_APPROVAL": "Awaiting approval",
-      "RETURNED": "Returned",
+      "RETURNED": "Returned for correction",
       "TO_POST": "To post",
       "POSTING": "Posting",
       "POSTING_FAILED": "Posting failed",
@@ -1040,7 +1037,8 @@
       "OPEN": "Not due",
       "PAID": "Paid",
       "CANCELLED": "Cancelled",
-      "REVERSED": "Reversed"
+      "REVERSED": "Reversed",
+      "REJECTED": "Rejected"
     },
     "groupSupplier": "Supplier",
     "groupStatus": "Status",
@@ -1049,49 +1047,98 @@
     "cancelBody": "The draft is never submitted or posted. It stays on record with your reason, and its supplier invoice number can be used again.",
     "cancelReason": "Why",
     "recordDebitNote": "Record debit note",
-    "creditedByDebitNotes": "Credited by debit notes"
+    "creditedByDebitNotes": "Credited by debit notes",
+    "titleOpening": "Opening balance",
+    "notNumbered": "Not numbered yet",
+    "titleUnnumbered": {
+      "DRAFT": "Draft bill",
+      "RETURNED": "Draft bill",
+      "AWAITING_APPROVAL": "Bill awaiting approval",
+      "REJECTED": "Rejected bill",
+      "TO_POST": "Bill to post",
+      "POSTING": "Bill to post",
+      "POSTING_FAILED": "Bill to post",
+      "CANCELLED": "Cancelled bill",
+      "REVERSED": "Reversed bill",
+      "OVERDUE": "Bill",
+      "PART_PAID": "Bill",
+      "OPEN": "Bill",
+      "PAID": "Bill"
+    },
+    "payBill": "Pay bill",
+    "dueOn": "Due {date}",
+    "detailsTitle": "Details",
+    "balanceTitle": "Balance",
+    "datesTitle": "History",
+    "recorded": "Recorded",
+    "approved": "Approved",
+    "reversedAt": "Reversed",
+    "cancelledAt": "Cancelled",
+    "rejectedAt": "Rejected",
+    "openingBalanceCarried": "Carried in as an opening balance",
+    "paymentsTitle": "Payments",
+    "noPayments": "No payments yet.",
+    "paymentUnnumbered": "Unposted payment",
+    "allocationState": {
+      "PENDING": "Not posted yet",
+      "REVERSED": "Reversed",
+      "CANCELLED": "Cancelled",
+      "REJECTED": "Rejected"
+    },
+    "filterByBalance": "Balance",
+    "balanceFilter": {
+      "unpaid": "Unpaid",
+      "paid": "Paid"
+    },
+    "tiles": {
+      "unpaid": "Unpaid",
+      "overdue": "Overdue",
+      "dueWeek": "Due in the next 7 days",
+      "toApprove": "To approve",
+      "bills": "{count, plural, =0 {No bills} one {# bill} other {# bills}}",
+      "toApproveNote": "Bills waiting for an approver"
+    },
+    "noLinesOpening": "Carried in from the previous system as one amount."
   },
   "payments": {
     "title": "Supplier payments",
-    "subtitle": "Money paid to suppliers, and how it settles against their bills.",
     "new": "New payment",
-    "createTitle": "New supplier payment",
-    "createSubtitle": "Records a payment to a supplier, the bank account it was drawn on, and the bills it settles.",
+    "createTitle": "New payment",
     "record": "Record payment",
     "number": "Payment",
     "unnumbered": "Not yet numbered",
     "paymentDate": "Payment date",
     "accountingDate": "Accounting date",
-    "accountingDateHint": "The date this lands in the ledger. Defaults to the payment date.",
+    "accountingDateHint": "The day this payment is entered in the books, when it differs from the payment date.",
     "method": "Method",
     "bankAccount": "Bank account",
-    "bankAccountHint": "Only active accounts that allow payments are listed.",
     "bankReference": "Bank reference",
     "totalAmount": "Amount",
-    "allocated": "Allocated",
     "unallocated": "Unallocated",
     "postingStatus": "Posting",
     "empty": "No payments yet.",
     "amountError": "Enter an amount greater than zero.",
     "apply": {
-      "title": "Apply to bills",
-      "hint": "Tick a bill to settle it from this payment. Ticking prefills the full outstanding amount; edit it to pay part. Anything left over is kept as a supplier advance.",
-      "enterAmountFirst": "Enter the payment amount above to start applying it to bills.",
+      "title": "Bills to pay",
       "loading": "Loading this supplier's bills…",
       "selectSupplierFirst": "Choose a supplier to see its outstanding bills.",
-      "none": "This supplier has no posted bills with an outstanding balance. The whole payment will be recorded as a supplier advance.",
+      "none": "This supplier has no unpaid bills. The whole payment is held as an advance.",
       "loadFailed": "This supplier's bills could not be loaded, so bills cannot be applied here. The payment can still be recorded as an advance and settled later.",
       "outstanding": "outstanding {amount}",
       "applyLabel": "Apply to {invoice}",
-      "applied": "Applied {amount}",
-      "unapplied": "Unapplied {amount}",
-      "unappliedHint": "Kept as a supplier advance.",
+      "applied": "Applied to bills {amount}",
+      "unapplied": "Held as advance {amount}",
       "rowProblem": {
         "empty": "Enter an amount to apply, or untick this bill.",
         "not-positive": "Enter an amount greater than zero, or untick this bill.",
         "exceeds-bill": "That is more than this bill still owes."
       },
-      "exceedsAmount": "The bills you have ticked add up to more than the payment amount. Reduce an amount or increase the payment."
+      "exceedsAmount": "The bills you have ticked add up to more than the payment amount. Reduce an amount or increase the payment.",
+      "billColumn": "Bill",
+      "dueColumn": "Due",
+      "owedColumn": "Owed",
+      "payColumn": "Pay",
+      "tick": "Pay {invoice}"
     },
     "noBanksTitle": "No bank account is available for payments",
     "noBanksBody": "A payment has to name an active bank account that allows payments. None is configured. An administrator has to add one before a payment can be raised.",
@@ -1107,10 +1154,10 @@
     "post": "Post",
     "reverse": "Reverse",
     "approveTitle": "Approve this payment?",
-    "approveBody": "Approving clears the payment for release. There is no reject action over the API, so this cannot be undone from the UI.",
+    "approveBody": "Approving clears the payment to be paid out and posted.",
     "releaseTitle": "Sign to release this payment?",
-    "releaseBody": "The bank account this payment draws on is under dual control: two authorised signatories must sign before it can be posted. Signing records your signature; the second signature releases the payment for posting. The approver cannot also release, and a signatory who approved a bill this payment settles cannot sign.",
-    "releaseDualControlNote": "This payment draws on a bank account under dual control (ADR-022). It must be released by two authorised signatories before it can be posted.",
+    "releaseBody": "This account needs two signatories to release a payment. Your signature is recorded; the second one releases it for posting. Whoever approved the payment, or a bill it pays, cannot sign.",
+    "releaseDualControlNote": "Two signatories of this account must sign the release before the payment can be posted.",
     "releaseNotSignatory": "You are not an authorised signatory of this payment's bank account, or signing would breach segregation of duties. Another signatory must release it.",
     "releaseAlreadySigned": "You have already signed the release for this payment. A second, different signatory is needed.",
     "released": "Released for posting.",
@@ -1119,11 +1166,11 @@
     "postPreview": "Journal to be written",
     "postDebit": "Debit",
     "postCredit": "Credit",
-    "postUnbalanced": "The allocated and unallocated amounts do not sum to the payment total. Posting is blocked — this payment is internally inconsistent and should be raised with the backend engineer.",
+    "postUnbalanced": "The amounts on this payment do not add up, so it cannot be posted. Cancel it and record it again.",
     "postAccountProblem": "The chart of accounts cannot answer which account is Accounts Payable or Supplier Advance, so the journal cannot be prepared.",
     "postBankMissing": "The bank account on this payment cannot be resolved to a GL account, so the journal cannot be prepared.",
     "reverseTitle": "Reverse this posted payment?",
-    "reverseBody": "A reversing journal is written with the debits and credits swapped. Neither entry is removed. The reversal is refused if any advance allocation against this payment is still posted.",
+    "reverseBody": "The bills it paid are owed again and the money goes back to the account it left. Both entries stay on record. Reverse any advance applied from this payment first.",
     "reverseReason": "Reason",
     "blockReason": {
       "not-draft": "Only a draft payment can be approved.",
@@ -1143,7 +1190,7 @@
       "noMatches": "Nothing matches these filters.",
       "filterByStatus": "Status",
       "filterByPosting": "Posting",
-      "emptyHint": "A payment records money paid to a supplier and how it settles against their bills.",
+      "emptyHint": "Payments you make to suppliers appear here.",
       "colTotal": "Amount",
       "filterByProject": "Project",
       "eyebrow": "Payables",
@@ -1157,24 +1204,32 @@
       "views": {
         "label": "Payment views",
         "all": "All",
-        "drafts": "Drafts",
-        "approved": "Approved",
-        "unallocated": "Unallocated"
+        "toApprove": "To approve",
+        "toPost": "To post",
+        "paid": "Paid",
+        "advances": "Advances held"
       },
       "listState": {
         "DRAFT": "Draft",
         "APPROVED": "Approved",
         "RELEASED": "Released",
-        "RETURNED": "Returned",
         "POSTING": "Posting",
         "POSTING_FAILED": "Posting failed",
-        "PAID_UNALLOCATED": "Paid · unallocated",
+        "PAID_UNALLOCATED": "Advance held",
         "PAID": "Paid",
         "CANCELLED": "Cancelled",
-        "REVERSED": "Reversed"
+        "REVERSED": "Reversed",
+        "REJECTED": "Rejected"
+      },
+      "tiles": {
+        "paidThisMonth": "Paid this month",
+        "toApprove": "To approve",
+        "toPost": "To post",
+        "advances": "Advances held",
+        "advancesNote": "Paid ahead of a bill"
       }
     },
-    "remittance": "Remittance advice (PDF)",
+    "remittance": "Remittance advice",
     "remittanceOpening": "Opening…",
     "remittanceFailed": "The remittance advice could not be opened. Try again.",
     "rejectPayment": "Reject payment",
@@ -1183,14 +1238,81 @@
     "cancelTitle": "Cancel this payment?",
     "endBody": "The payment will not be made. The bills it was paying get their balance back, and the payment stays on record with your reason.",
     "endReason": "Why",
-    "rejectedNotice": "This payment was rejected",
-    "cancelledNotice": "This payment was cancelled"
+    "rejectedNotice": "Rejected on {date}",
+    "cancelledNotice": "Cancelled on {date}",
+    "eyebrow": "Payables",
+    "methodQuestion": "How was the supplier paid?",
+    "paidFrom": "Paid from",
+    "chooseAccount": "Choose the account",
+    "accountError": "Choose the account the money left.",
+    "bookOtherDate": "Book to a different date",
+    "referenceLabel": {
+      "BANK_TRANSFER": "Transfer reference",
+      "CHEQUE": "Cheque number",
+      "CASH": "Receipt number",
+      "MOBILE_MONEY": "Transaction ID",
+      "CARD": "Card reference"
+    },
+    "proof": {
+      "chequeDate": "Cheque date",
+      "provider": "Mobile-money service",
+      "payeePhone": "Supplier's phone number",
+      "payeeAccount": "Supplier's account number",
+      "nameLabel": {
+        "BANK_TRANSFER": "Account name",
+        "CHEQUE": "Payee on the cheque",
+        "MOBILE_MONEY": "Registered name",
+        "CASH": "Cash taken by",
+        "CARD": "Paid to"
+      }
+    },
+    "providers": {
+      "EVC_PLUS": "EVC Plus",
+      "ZAAD": "Zaad",
+      "SAHAL": "Sahal",
+      "EDAHAB": "eDahab"
+    },
+    "owedNote": "Owed {amount} on {count, plural, one {# bill} other {# bills}}",
+    "owedNothing": "Nothing is owed to this supplier. A payment is held as an advance.",
+    "backToList": "Supplier payments",
+    "amountPaid": "Amount paid",
+    "paidFromAccount": "from {account}",
+    "detailsTitle": "Details",
+    "paidTo": "Paid to",
+    "noReference": "Not recorded",
+    "moneyTitle": "Payment",
+    "appliedToBills": "Applied to bills",
+    "paidBack": "Paid back by the supplier",
+    "heldAsAdvance": "Held as advance",
+    "historyTitle": "History",
+    "recorded": "Recorded",
+    "approvedOn": "Approved",
+    "postedOn": "Posted",
+    "reversedOn": "Reversed",
+    "cancelledOn": "Cancelled",
+    "rejectedOn": "Rejected",
+    "reversedNotice": "Reversed on {date}",
+    "awaitingReleaseTitle": "Waiting for two signatures",
+    "postFailedTitle": "Posting failed",
+    "postFailedBody": "The payment is approved but could not be posted. Try Post again; if it fails, the message says why.",
+    "signRelease": "Sign release",
+    "titleUnnumbered": {
+      "DRAFT": "Draft payment",
+      "APPROVED": "Payment to post",
+      "RELEASED": "Payment to post",
+      "REJECTED": "Rejected payment",
+      "POSTING": "Payment to post",
+      "POSTING_FAILED": "Payment to post",
+      "PAID_UNALLOCATED": "Payment",
+      "PAID": "Payment",
+      "CANCELLED": "Cancelled payment",
+      "REVERSED": "Reversed payment"
+    }
   },
   "allocation": {
-    "title": "Apply this advance",
-    "subtitle": "Settles a posted bill from the unallocated balance of this payment, writing Dr Accounts Payable / Cr Supplier Advance.",
+    "title": "Bills paid",
     "bill": "Bill to settle",
-    "billHint": "Only posted bills for this supplier, in this currency, with an outstanding balance are listed.",
+    "billHint": "Unpaid bills from this supplier.",
     "amount": "Amount to apply",
     "amountHint": "Up to {unallocated} is unallocated on this payment.",
     "apply": "Apply to bill",
@@ -1208,14 +1330,14 @@
       "exceeds-unallocated": "That is more than this payment has left unallocated.",
       "exceeds-bill": "That is more than the bill still owes. Choose a smaller amount."
     },
-    "appliedTitle": "What this payment settled",
     "aBill": "Bill",
     "appliedLater": "applied from the advance",
     "appliedWithPayment": "paid with the payment",
     "reversed": "Reversed",
     "reverseApplication": "Reverse",
     "reverseApplicationTitle": "Reverse what was applied to {bill}?",
-    "reverseApplicationBody": "The bill is owed again and the money goes back to this payment’s unapplied balance."
+    "reverseApplicationBody": "The bill is owed again and the money goes back to this payment’s unapplied balance.",
+    "applyTitle": "Apply the {amount} held to a bill"
   },
   "matching": {
     "title": "Matching",
@@ -2072,7 +2194,7 @@
       "short": "Quotes {count} of {required}"
     },
     "waiting": {
-      "duration": "{hours, plural, =0 {} other {# h }}{minutes} m",
+      "duration": "{hours, plural, =0 {{minutes, plural, =0 {Just now} other {# min}}} other {# h {minutes} min}}",
       "sentAt": "Sent {time}",
       "waitingFor": "waiting {duration}",
       "tone": {
@@ -2163,7 +2285,8 @@
         "waiting": "Waiting",
         "estimate": "Estimate",
         "status": "Status",
-        "awarded": "Chosen total"
+        "awarded": "Chosen total",
+        "lowest": "Lowest quote"
       },
       "empty": {
         "collect": "Nothing to collect",
@@ -2181,7 +2304,9 @@
       "noMatches": "Nothing matches.",
       "openRequests": "Material requests",
       "overhead": "Company overhead",
-      "eyebrow": "Purchasing"
+      "eyebrow": "Purchasing",
+      "urgent": "Urgent",
+      "totalsToType": "Totals to type"
     },
     "capture": {
       "back": "Quotes",
@@ -2274,7 +2399,6 @@
     },
     "inbox": {
       "title": "Quotes to choose",
-      "subtitle": "Oldest first. Type each total from the photo, then choose.",
       "empty": "Nothing to choose",
       "emptyHint": "When procurement sends quotes, they show here.",
       "searchLabel": "Search quotes to choose",
@@ -2675,7 +2799,8 @@
         "maintainer": "You registered this store, so another finance user must pay it.",
         "maintainerNamed": "{name} registered this store, so someone else in finance must pay it.",
         "thenSignatures": "Then two bank signatories release it.",
-        "signaturesOnly": "No approval needed — two bank signatories release it before the money goes out."
+        "signaturesOnly": "No approval needed — two bank signatories release it before the money goes out.",
+        "noAccountForMethod": "No account suits this method"
       },
       "changePath": {
         "title": "Change how it's paid?",
@@ -2930,7 +3055,6 @@
     },
     "paymentsQueue": {
       "title": "Payments needed",
-      "subtitle": "Orders from chosen quotes waiting for money, and store receipts waiting to be recorded. Longest wait first — a buyer may be standing at the store.",
       "tabs": {
         "pay": "To pay",
         "settle": "To settle"
@@ -2940,7 +3064,9 @@
           "pay": "Waiting for payment",
           "settle": "Waiting to settle"
         },
-        "awarded": "Awarded"
+        "awarded": "Awarded",
+        "payee": "Pay to",
+        "stillToPay": "Still to pay"
       },
       "searchLabel": "Search payments",
       "searchPlaceholder": "Search by MR or request",
@@ -2964,7 +3090,10 @@
         "cashAccountAction": "Add a cash box or EVC float",
         "done": "done",
         "missing": "missing"
-      }
+      },
+      "eyebrow": "Payables",
+      "summary": "{pay} to pay · {settle} to settle",
+      "ofTotal": "of {total}"
     }
   },
   "site": {

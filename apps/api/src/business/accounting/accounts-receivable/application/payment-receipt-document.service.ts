@@ -10,6 +10,7 @@ import {
   resolveInvoiceDocumentSnapshot,
   type InvoiceDocumentSnapshot,
 } from '../../accounting-core/infrastructure/invoice-document-policy.repository.js';
+import { paymentDetailLines } from '../domain/receipt-payment-method.js';
 
 type ReceiptForDocument = NonNullable<Awaited<ReturnType<PaymentReceiptArRepository['findForDocument']>>>;
 
@@ -148,6 +149,7 @@ function toDocumentInput(
     })),
     unallocatedAmount: total.minus(applied).toFixed(2),
     paymentMethod: receipt.paymentMethod,
+    paymentDetails: paymentDetailLines(receipt.paymentMethod, receipt),
     bankAccountLabel: receipt.bankAccount ? `${receipt.bankAccount.bankName} — ${receipt.bankAccount.accountName}` : null,
     reference: receipt.reference,
     bankReference: receipt.bankReference,

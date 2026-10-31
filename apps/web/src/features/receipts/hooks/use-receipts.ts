@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 
 import {
   allocateToInvoice,
+  cancelReceipt,
   createReceipt,
   getReceipt,
   getReceiptDocument,
@@ -20,6 +21,10 @@ import {
 } from '../api/receipts-api';
 import type { MutationFeedbackMeta } from '@/lib/mutation-feedback';
 import { openSignedDocument } from '@/lib/open-signed-document';
+import { uploadFile } from '@/features/files/api/files-api';
+import { attachFinanceFile } from '@/features/finance-attachments/api';
+import { invoiceKeys } from '@/features/accounting/hooks/use-invoices';
+import { todayWireDate } from '@/features/accounting/invoice-overdue';
 
 import type { Receipt, ReceiptDetail } from '../types';
 
@@ -48,16 +53,35 @@ export function useReceipt(id: string): UseQueryResult<ReceiptDetail, Error> {
   });
 }
 
+/**
+ * PM — the optional proof file goes onto the receipt once it exists. The receipt is saved either
+ * way; a failed upload opens the receipt with `?proof=failed` so the reader can attach it again.
+ */
+async function withProof<T extends { id: string }>(saved: Promise<T>, proof?: File | null) {
+  const receipt = await saved;
+  if (!proof) return { receipt, proofFailed: false };
+  try {
+    await attachFinanceFile('RECEIPT', receipt.id, await uploadFile(proof));
+    return { receipt, proofFailed: false };
+  } catch {
+    return { receipt, proofFailed: true };
+  }
+}
+
+const receiptHref = ({ receipt, proofFailed }: { receipt: { id: string }; proofFailed: boolean }) =>
+  `/receipts/${receipt.id}${proofFailed ? '?proof=failed' : ''}`;
+
 export function useCreateReceipt() {
   const router = useRouter();
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (payload: CreateReceiptPayload) => createReceipt(payload),
+    mutationFn: ({ payload, proof }: { payload: CreateReceiptPayload; proof?: File | null }) =>
+      withProof(createReceipt(payload), proof),
     meta: { successToast: 'accounting.feedback.receiptRecorded' },
-    onSuccess: async (receipt) => {
+    onSuccess: async (result) => {
       await queryClient.invalidateQueries({ queryKey: receiptKeys.all });
-      router.push(`/receipts/${receipt.id}`);
+      router.push(receiptHref(result));
     },
   });
 }
@@ -68,14 +92,15 @@ export function useReceivePayment() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (payload: ReceivePaymentPayload) => receivePayment(payload),
+    mutationFn: ({ payload, proof }: { payload: ReceivePaymentPayload; proof?: File | null }) =>
+      withProof(receivePayment(payload), proof),
     meta: { successToast: 'accounting.feedback.paymentReceived' },
-    onSuccess: async (receipt) => {
+    onSuccess: async (result) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: receiptKeys.all }),
         queryClient.invalidateQueries({ queryKey: ['accounting'] }),
       ]);
-      router.push(`/receipts/${receipt.id}`);
+      router.push(receiptHref(result));
     },
   });
 }
@@ -95,9 +120,10 @@ function useReceiptStateMutation<TArgs>(
     mutationFn: run,
     meta,
     onSuccess: async () => {
+      // Invoices' balances move with every post, application and reversal.
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: receiptKeys.detail(receiptId) }),
         queryClient.invalidateQueries({ queryKey: receiptKeys.all }),
+        queryClient.invalidateQueries({ queryKey: invoiceKeys.all }),
       ]);
     },
   });
@@ -119,6 +145,25 @@ export function useAllocateToInvoice(receiptId: string) {
   );
 }
 
+/** Applies money held on account to several invoices: one application (and journal) per invoice. */
+export function useApplyOnAccount(receiptId: string) {
+  return useReceiptStateMutation(
+    receiptId,
+    async (allocations: AllocateToInvoicePayload[]) => {
+      for (const allocation of allocations) await allocateToInvoice(receiptId, allocation);
+    },
+    { successToast: 'accounting.feedback.receiptAllocated' },
+  );
+}
+
+/** RC-5 — cancel a receipt that was recorded but never posted. */
+export function useCancelReceipt(receiptId: string) {
+  return useReceiptStateMutation(receiptId, (reason: string) => cancelReceipt(receiptId, { reason }), {
+    successToast: 'accounting.feedback.receiptCancelled',
+    flashRow: false,
+  });
+}
+
 export function useReverseAllocation(receiptId: string) {
   return useReceiptStateMutation(
     receiptId,
@@ -127,11 +172,18 @@ export function useReverseAllocation(receiptId: string) {
   );
 }
 
-/** AR-2 — reverse a posted receipt; the invoices it paid owe again. */
-export function useReverseReceipt(receiptId: string) {
+/**
+ * AR-2 — reverse a posted receipt; the invoices it paid owe again. Dated today, or on the receipt
+ * date when that is later (RC-4: a reversal cannot predate the receipt).
+ */
+export function useReverseReceipt(receiptId: string, receiptDate?: string) {
   return useReceiptStateMutation(
     receiptId,
-    (reason: string) => reverseReceipt(receiptId, { reversalDate: new Date().toISOString().slice(0, 10), reason }),
+    (reason: string) => {
+      const today = todayWireDate();
+      const reversalDate = receiptDate && receiptDate.slice(0, 10) > today ? receiptDate.slice(0, 10) : today;
+      return reverseReceipt(receiptId, { reversalDate, reason });
+    },
     { successToast: 'accounting.feedback.receiptReversed', flashRow: false },
   );
 }

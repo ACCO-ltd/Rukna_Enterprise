@@ -139,7 +139,8 @@ export type JournalStatus =
   | 'APPROVED'
   | 'REJECTED'
   | 'POSTED'
-  | 'REVERSED';
+  | 'REVERSED'
+  | 'CANCELLED';
 
 export type JournalCategory =
   | 'GENERAL'
@@ -211,8 +212,44 @@ export interface JournalEntry {
   rejectedAt: string | null;
   rejectionReason: string | null;
   postedBy: string | null;
+  /** GL-J — an unposted journal set aside. */
+  cancelledBy?: string | null;
+  cancelledAt?: string | null;
+  cancellationReason?: string | null;
+  reversalReason?: string | null;
   createdAt: string;
   lines: JournalLine[];
+  // `GET /journals/:id` only — who did what by name, and the journals around this one.
+  preparedBy?: string;
+  preparedByName?: string | null;
+  submittedByName?: string | null;
+  approvedByName?: string | null;
+  postedByName?: string | null;
+  rejectedByName?: string | null;
+  reversedByName?: string | null;
+  cancelledByName?: string | null;
+  reversals?: JournalLink[];
+  reversalOf?: JournalLink | null;
+}
+
+export interface JournalLink {
+  id: string;
+  journalNumber: string | null;
+  accountingDate: string;
+}
+
+/** `GET /journals/entries` — one posted entry in the day book, whatever posted it. */
+export interface JournalBookEntry {
+  id: string;
+  journalNumber: string | null;
+  accountingDate: string;
+  description: string;
+  currencyCode: string;
+  sourceDocumentType: string | null;
+  sourceDocumentId: string | null;
+  entryPurpose: EntryPurpose;
+  reversalOfJournalEntryId: string | null;
+  totalAmount: string;
 }
 
 /**
@@ -376,6 +413,8 @@ export interface AccountLedger {
   accountId: string;
   accountCode: string;
   accountName: string;
+  /** GL-L — the side the account normally sits on; balances are debits less credits. */
+  normalBalance?: 'DEBIT' | 'CREDIT';
   openingBalance: string;
   periodDebit: string;
   periodCredit: string;
@@ -508,13 +547,35 @@ export interface ClientInvoice {
   advanceRecoveryAmount?: string;
   /** ADR-046 §5 — on a retention release invoice, the retention it bills (subtotal is "0.00"). */
   retentionReleasedAmount?: string;
+  /** On an IPC invoice, the certificate's gross this period; `subtotal` is this less other deductions. */
+  certifiedGrossAmount?: string | null;
+  otherDeductionsAmount?: string;
   /** Falls as receipts are allocated. Equals `totalAmount` until the first allocation. */
   outstandingAmount: string;
+  /**
+   * CI-3 — what has settled the invoice so far, by kind (posted only). With `outstandingAmount`
+   * these add up to `totalAmount`. Optional: an older API omits them.
+   */
+  amountPaid?: string;
+  amountCredited?: string;
+  amountWrittenOff?: string;
+  /** CI-3 — the receipts applied to it, oldest first (detail read only). */
+  payments?: InvoicePayment[];
+  /** The client and line description as frozen when the invoice was raised. */
+  billingAddressSnapshot?: {
+    description?: string | null;
+    org?: { name?: string | null; legalAddress?: string | null; taxRegistrationNumber?: string | null } | null;
+    client?: { name?: string | null; address?: string | null; city?: string | null; taxNumber?: string | null } | null;
+  } | null;
   /** ADR-048 — a hand-typed invoice for a non-contract sale; its `lines` carry the amount. */
   isManual?: boolean;
   /** ADR-048 — the hand-typed lines (detail read only; empty for source invoices). */
   lines?: ManualInvoiceLineDto[];
   paymentTerms: string | null;
+  /** The client's purchase order or job number, printed as "Your Ref."; null for none. */
+  clientReference?: string | null;
+  /** A note to the client printed on this invoice; null for none. */
+  notes?: string | null;
   documentStatus: InvoiceDocStatus;
   postingStatus: PostingStatus;
   postedJournalEntryId: string | null;
@@ -528,6 +589,18 @@ export interface ClientInvoice {
   approvedAt: string | null;
   createdAt: string;
   createdBy: string;
+}
+
+/** CI-3 — one receipt applied to an invoice (`GET /invoices/:id` → `payments`). */
+export interface InvoicePayment {
+  allocationId: string;
+  receiptId: string;
+  receiptNumber: string | null;
+  receiptDate: string;
+  appliedOn: string;
+  paymentMethod: string | null;
+  reference: string | null;
+  amount: string;
 }
 
 /** Body of `POST /invoices/from-ipc`. Dates are `YYYY-MM-DD`. */
@@ -644,6 +717,8 @@ export interface PostingProfile {
 export interface BankAccount {
   id: string;
   glAccountId: string;
+  /** The ledger account it posts to (its code is shown on the account page). */
+  glAccount?: { id: string; code: string } | null;
   bankName: string;
   accountName: string;
   accountNumber: string;
@@ -651,6 +726,8 @@ export interface BankAccount {
   swiftCode: string | null;
   currencyCode: string;
   branch: string | null;
+  /** PM-3 — a bank account, a cash box or a mobile-money wallet; a receipt lands by its method. */
+  kind?: BankAccountKind;
   /** A receipts-only account must not appear in a payment picker. */
   allowsReceipts: boolean;
   allowsPayments: boolean;
@@ -660,13 +737,18 @@ export interface BankAccount {
   bookBalance?: string;
   /** B-1 — the end date of the latest reconciled statement, or null. */
   lastReconciledTo?: string | null;
+  /** BK — what the bank said at that date: the latest reconciled statement's closing balance. */
+  lastStatementBalance?: string | null;
 }
 
 /** B-1 — `PATCH /bank-accounts/:id`. The GL account never changes. */
+export type BankAccountKind = 'BANK' | 'CASH' | 'MOBILE_WALLET';
+
 export interface UpdateBankAccountBody {
   accountName?: string;
   bankName?: string;
   accountNumber?: string;
+  kind?: BankAccountKind;
   allowsReceipts?: boolean;
   allowsPayments?: boolean;
 }
@@ -725,18 +807,6 @@ export interface MigrationReport {
   readyForCfoApproval: boolean;
 }
 
-/**
- * Body of `POST /accounting/reconcile`.
- *
- * `bankAccountCodes` is `@IsArray() @IsOptional()` with no `@IsString({ each: true })`, so the
- * server would accept an array of anything. Sent as GL codes, which is what it reads.
- */
-export interface RunReconciliationPayload {
-  arAccountCode: string;
-  apAccountCode: string;
-  bankAccountCodes?: string[];
-  periodId?: string;
-}
 
 /**
  * One control account as `POST /accounting/reconcile` reports it.
@@ -747,14 +817,17 @@ export interface RunReconciliationPayload {
  * a component that tries to render both.
  */
 export interface ControlAccountCheck {
+  accountId: string;
   accountCode: string;
   accountName: string;
-  subledgerType: 'AR' | 'AP' | 'BANK';
+  subledgerType: 'AR' | 'AP';
+  /** On the account's own side (GL-L): a negative is a fault. */
   glBalance: string;
   subledgerBalance: string;
+  /** Books less documents, signed. */
   variance: string;
   reconciled: boolean;
-  periodId?: string;
+  documentCount: number;
 }
 
 export interface ReconciliationReport {
@@ -773,6 +846,23 @@ export interface InvoicePaymentAccount {
 }
 
 /** `GET /invoice-document-settings` — what the client invoice PDF prints beyond the invoice. */
+/** CI-8 — when the invoice count restarts, and so which date part the number carries. */
+export type NumberResetPolicy = 'NEVER' | 'YEARLY' | 'MONTHLY' | 'DAILY';
+
+/** CI-8 — `GET /invoice-numbering`. */
+export interface InvoiceNumbering {
+  prefix: string;
+  resetPolicy: NumberResetPolicy;
+  paddingLength: number;
+  /** The count the next invoice dated today takes. */
+  nextNumber: number;
+  /** That invoice's number, e.g. "INV-2026-0001". */
+  nextInvoiceNumber: string;
+  updatedAt: string | null;
+}
+
+export type UpdateInvoiceNumberingBody = Pick<InvoiceNumbering, 'prefix' | 'resetPolicy' | 'paddingLength' | 'nextNumber'>;
+
 export interface InvoiceDocumentSettings {
   paymentAccounts: InvoicePaymentAccount[];
   /** The organisation's own notes, one per line; null while the defaults apply. */

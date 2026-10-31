@@ -36,10 +36,12 @@ import type {
   ProfitLoss,
   ReconciliationReport,
   ReverseJournalPayload,
-  RunReconciliationPayload,
+  JournalBookEntry,
   TrialBalance,
   UpdateInvoiceDocumentSettingsBody,
   UpdateBankAccountBody,
+  InvoiceNumbering,
+  UpdateInvoiceNumberingBody,
 } from '../types';
 import type { FinanceApprovalSettings } from '@erp/types';
 
@@ -92,6 +94,11 @@ export function updateAccount(id: string, body: UpdateAccountBody): Promise<Acco
   });
 }
 
+/** GL-C — make an account inactive, or active again. */
+export function setAccountStatus(id: string, status: 'ACTIVE' | 'INACTIVE'): Promise<Account> {
+  return apiClient<Account>(`/accounts/${id}/${status === 'INACTIVE' ? 'deactivate' : 'reactivate'}`, { method: 'POST' });
+}
+
 /**
  * `POST /accounts/import` — bulk upsert of the chart of accounts, keyed by code.
  *
@@ -137,24 +144,10 @@ export function runOpeningBalance(payload: OpeningBalanceBody): Promise<Migratio
   });
 }
 
-/**
- * `POST /accounting/reconcile`
- *
- * Compares the AR and AP control accounts against their subledgers, plus any bank accounts
- * named. A variance over 0.01 marks a check unreconciled and blocks period close.
- *
- * A POST that reads and returns a report rather than changing anything — so it is exposed as
- * an explicit action the user runs, not a query that refetches on its own.
- */
-export function runReconciliation(
-  payload: RunReconciliationPayload,
-): Promise<ReconciliationReport> {
-  return apiClient<ReconciliationReport>('/accounting/reconcile', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
+export function getReconciliation(): Promise<ReconciliationReport> {
+  return apiClient<ReconciliationReport>('/accounting/reconcile');
 }
+
 
 /**
  * `GET /bank-accounts`.
@@ -451,6 +444,20 @@ export function postJournal(id: string): Promise<JournalEntry> {
   return apiClient<JournalEntry>(`/journals/${id}/post`, { method: 'POST' });
 }
 
+/** GL-J — sets aside a journal that has not posted. */
+export function cancelJournal(id: string, reason: string): Promise<JournalEntry> {
+  return apiClient<JournalEntry>(`/journals/${id}/cancel`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason }),
+  });
+}
+
+/** GL-J — every posted entry dated in the range, whatever posted it. */
+export function listJournalEntries(fromDate: string, toDate: string): Promise<JournalBookEntry[]> {
+  return apiClient<JournalBookEntry[]>(`/journals/entries?fromDate=${fromDate}&toDate=${toDate}`);
+}
+
 /** Raises a new entry with the debits and credits swapped. Neither entry is removed. */
 export function reverseJournal(
   id: string,
@@ -635,6 +642,20 @@ export function rebuildSnapshot(periodId: string): Promise<unknown> {
 /** Year-end: posts the closing journal, zeroes the P&L into retained earnings, closes the FY. */
 export function closeFiscalYear(fiscalYearId: string): Promise<unknown> {
   return apiClient<unknown>(`/periods/fiscal-year/${fiscalYearId}/close`, { method: 'POST' });
+}
+
+/** CI-8 — `GET /invoice-numbering`: the invoice number format and the next number. */
+export function getInvoiceNumbering(): Promise<InvoiceNumbering> {
+  return apiClient<InvoiceNumbering>('/invoice-numbering');
+}
+
+/** CI-8 — `PUT /invoice-numbering`: `manage:accounting`; 400 `INVOICE_NUMBERING_INVALID`. */
+export function updateInvoiceNumbering(body: UpdateInvoiceNumberingBody): Promise<InvoiceNumbering> {
+  return apiClient<InvoiceNumbering>('/invoice-numbering', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
 }
 
 /** `GET /invoice-document-settings` — bank account, notes and signatory for the invoice PDF. */

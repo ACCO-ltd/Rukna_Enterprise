@@ -87,3 +87,33 @@ export function reconcile(f: ReconciliationFacts) {
   const difference = f.statementClosing.minus(adjustedLedger);
   return { outstanding, adjustedLedger, difference, balanced: difference.isZero() };
 }
+
+export interface UnclearedEntryFact {
+  /** The ledger line. */
+  id: string;
+  journalEntryId: string;
+  /** The journal this one reverses, when it is a reversal. */
+  reversalOfJournalEntryId: string | null;
+  amount: Decimal;
+}
+
+/**
+ * BR-4 — ledger lines that cancel out: a line and the line of the journal that reversed it, both
+ * still uncleared, moving the same money opposite ways (a cheque written and then voided, a
+ * transfer recorded in error). The bank never saw either, so neither is outstanding and neither is
+ * offered as a match for a statement line. Returns the ids of every line in such a pair.
+ */
+export function cancelledOutLines(lines: UnclearedEntryFact[]): Set<string> {
+  const byEntry = new Map<string, UnclearedEntryFact[]>();
+  for (const l of lines) byEntry.set(l.journalEntryId, [...(byEntry.get(l.journalEntryId) ?? []), l]);
+  const out = new Set<string>();
+  for (const reversal of lines) {
+    if (!reversal.reversalOfJournalEntryId || out.has(reversal.id)) continue;
+    const original = (byEntry.get(reversal.reversalOfJournalEntryId) ?? []).find((o) => !out.has(o.id) && o.amount.eq(reversal.amount.neg()));
+    if (original) {
+      out.add(original.id);
+      out.add(reversal.id);
+    }
+  }
+  return out;
+}

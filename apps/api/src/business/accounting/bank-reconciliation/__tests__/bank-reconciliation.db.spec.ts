@@ -6,6 +6,10 @@
  *   BR-02  accept the suggestions, post the bank charge from its line, and reconcile; a cheque the
  *          bank has not seen stays outstanding; the reconciled statement is frozen
  *   BR-03  matching guards: wrong amount, a line of another account, a ledger line already cleared
+ *   BR-05  a date that is not a real day is refused; statements reconcile in order and only the
+ *          latest can be removed
+ *   BR-06  a line posted by mistake is undone (mirror journal, line unmatched) and posted again;
+ *          a payment and its reversal cancel out — neither outstanding nor suggested
  */
 
 import { PrismaClient } from '@prisma/client';
@@ -15,6 +19,7 @@ import { AccountingFixtureFactory, type AccountingTestEnv } from '../../__tests_
 import { buildServices, type AccountingServices } from '../../__tests__/helpers/build-services';
 import { BankReconciliationService } from '../application/bank-reconciliation.service';
 import { BankStatementRepository } from '../infrastructure/bank-statement.repository';
+import { transferProof } from '../../__tests__/helpers/payment-proof';
 
 const prisma = new PrismaClient();
 let env: AccountingTestEnv;
@@ -47,6 +52,7 @@ beforeAll(async () => {
 
   // The ledger: 1000 received on day 1, 300 paid on day 3, a 200 cheque written on day 10.
   await svc.customerReceiptService.receive(env.identity, {
+    ...transferProof(),
     clientId: env.clientId, bankAccountId: env.bankAccountId, receiptDate: plus(1), amount: '1000.00', currency: 'USD', allocations: [],
   });
   await payment(300, 3);
@@ -141,4 +147,59 @@ it('BR-04: statements follow each other — no overlap, and each opens where the
   await expect(rec.import(env.identity, next(plus(26), '700.00'))).rejects.toMatchObject({ response: { errorCode: 'OPENING_BALANCE_BREAK', details: { expectedOpening: '685.00' } } });
   const ok = await rec.import(env.identity, next(plus(26), '685.00'));
   await rec.remove(env.identity, ok.statement.id);
+});
+
+it('BR-05: real dates; statements reconcile in order; only the latest is removed', async () => {
+  await expect(rec.import(env.identity, {
+    bankAccountId: env.bankAccountId, periodStart: '2026-02-30', statementDate: plus(40), openingBalance: '685.00', closingBalance: '685.00',
+    lines: [{ transactionDate: plus(40), description: 'x', amount: '1.00' }],
+  })).rejects.toMatchObject({ response: { errorCode: 'DATE_INVALID' } });
+
+  const first = await rec.import(env.identity, {
+    bankAccountId: env.bankAccountId, periodStart: plus(21), statementDate: plus(25), openingBalance: '685.00', closingBalance: '485.00',
+    lines: [{ transactionDate: plus(22), description: 'Cheque 1001', amount: '-200.00' }],
+  });
+  const second = await rec.import(env.identity, {
+    bankAccountId: env.bankAccountId, periodStart: plus(26), statementDate: plus(30), openingBalance: '485.00', closingBalance: '480.00',
+    lines: [{ transactionDate: plus(27), description: 'Charge', amount: '-5.00' }],
+  });
+  expect(second.earlierOpenStatementDate).toBe(plus(25));
+  expect(second.canReconcile).toBe(false);
+  await expect(rec.reconcileStatement(env.identity, second.statement.id)).rejects.toMatchObject({ response: { errorCode: 'EARLIER_STATEMENT_OPEN' } });
+  await expect(rec.remove(env.identity, first.statement.id)).rejects.toMatchObject({ response: { errorCode: 'STATEMENT_NOT_LATEST' } });
+  await rec.remove(env.identity, second.statement.id);
+  await rec.remove(env.identity, first.statement.id);
+});
+
+it('BR-06: undo a line posted by mistake; a payment and its reversal cancel out', async () => {
+  // A 75 payment made and reversed (recorded in error); the bank never saw it.
+  await payment(75, 23);
+  const pay = await prisma.supplierPayment.findFirstOrThrow({ where: { organizationId: env.orgId, totalAmount: 75 } });
+  await svc.supplierPaymentService.reverse(env.identity, pay.id, { reason: 'Recorded in error', reversalDate: plus(24) });
+
+  const w0 = await rec.import(env.identity, {
+    bankAccountId: env.bankAccountId, periodStart: plus(21), statementDate: plus(25), openingBalance: '685.00', closingBalance: '465.00',
+    lines: [
+      { transactionDate: plus(22), description: 'Cheque 1001', amount: '-200.00' },
+      { transactionDate: plus(24), description: 'Charge', amount: '-20.00' },
+    ],
+  });
+  const pair = w0.uncleared.filter((l) => l.cancelledOut).map((l) => l.amount).sort();
+  expect(pair).toEqual(['-75.00', '75.00']);
+  expect(w0.lines.every((l) => l.suggestion?.amount !== '-75.00')).toBe(true);
+
+  const charge = w0.lines[1]!;
+  // Posted to the wrong account, then undone: the line is open again, and the two journals cancel out.
+  let w = await rec.postLine(env.identity, w0.statement.id, charge.id, { accountId: env.accounts.revId });
+  expect(w.lines[1]!.matchStatus).toBe('POSTED');
+  w = await rec.undoPost(env.identity, w0.statement.id, charge.id);
+  expect(w.lines[1]).toMatchObject({ matchStatus: 'UNMATCHED', suggestion: null, adjustmentJournalEntryId: null });
+  expect(w.uncleared.filter((l) => l.cancelledOut).map((l) => l.amount).sort()).toEqual(['-20.00', '-75.00', '20.00', '75.00']);
+  await expect(rec.undoPost(env.identity, w0.statement.id, charge.id)).rejects.toMatchObject({ response: { errorCode: 'LINE_NOT_POSTED' } });
+
+  w = await rec.postLine(env.identity, w0.statement.id, charge.id, { accountId: env.accounts.expId, memo: 'Bank charges' });
+  const cheque = w.uncleared.find((l) => l.amount === '-200.00' && !l.cancelledOut)!;
+  w = await rec.match(env.identity, w0.statement.id, w.lines[0]!.id, cheque.journalLineId);
+  expect(w.reconciliation).toMatchObject({ difference: '0.00', balanced: true });
+  expect(w.canReconcile).toBe(true);
 });

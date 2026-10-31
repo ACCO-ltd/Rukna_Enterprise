@@ -26,6 +26,7 @@ import { ReconciliationService } from './application/reconciliation.service.js';
 import { PostingAccountResolver } from './application/posting-account-resolver.service.js';
 import { TaxCodeService } from './application/tax-code.service.js';
 import { InvoiceDocumentSettingsService } from './application/invoice-document-settings.service.js';
+import { InvoiceNumberingService } from './application/invoice-numbering.service.js';
 
 import { AccountingReadinessController } from './presentation/accounting-readiness.controller.js';
 import { AccountingGuideController } from './presentation/accounting-guide.controller.js';
@@ -36,6 +37,7 @@ import { OpeningBalanceController } from './presentation/opening-balance.control
 import { ReconciliationController } from './presentation/reconciliation.controller.js';
 import { TaxCodeController } from './presentation/tax-code.controller.js';
 import { InvoiceDocumentSettingsController } from './presentation/invoice-document-settings.controller.js';
+import { InvoiceNumberingController } from './presentation/invoice-numbering.controller.js';
 import { AuditLogsModule } from '../../../platform/audit-logs/audit-logs.module.js';
 import { ApprovalSettingsController } from './presentation/approval-settings.controller.js';
 
@@ -56,6 +58,7 @@ import { BankTransferService } from './application/bank-transfer.service.js';
     ReconciliationController,
     TaxCodeController,
     InvoiceDocumentSettingsController,
+    InvoiceNumberingController,
   ],
   providers: [
     BankTransferService,
@@ -87,6 +90,7 @@ import { BankTransferService } from './application/bank-transfer.service.js';
     PostingAccountResolver,
     TaxCodeService,
     InvoiceDocumentSettingsService,
+    InvoiceNumberingService,
   ],
   exports: [
     ACCOUNTING_POSTING_PORT,

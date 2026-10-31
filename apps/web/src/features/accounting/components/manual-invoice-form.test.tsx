@@ -24,7 +24,11 @@ vi.mock('@/features/clients/hooks/use-clients', () => ({
   useClients: () => ({
     isPending: false,
     refetch: vi.fn(),
-    data: [{ id: 'c1', code: 'CL-1', name: 'Hargeisa Water Agency', status: 'ACTIVE', taxNumber: null, defaultCurrency: 'USD' }],
+    data: [
+      { id: 'c1', code: 'CL-1', name: 'Hargeisa Water Agency', status: 'ACTIVE', taxNumber: null, defaultCurrency: 'USD' },
+      // A client set up with another default currency, and its own 30-day terms.
+      { id: 'c2', code: 'CL-2', name: 'Berbera Port Authority', status: 'ACTIVE', taxNumber: null, defaultCurrency: 'EUR', paymentTermsDays: 30 },
+    ],
   }),
 }));
 vi.mock('./invoice-tax-field', () => ({
@@ -33,6 +37,11 @@ vi.mock('./invoice-tax-field', () => ({
   useInvoiceTaxChoice: () => ({ rateFraction: '0.05', blocked: false }),
   useInvoiceTaxErrorMessage: () => () => null,
 }));
+const approval = vi.hoisted(() => ({ above: null as string | null }));
+vi.mock('../hooks/use-accounting', () => ({
+  useApprovalSettings: () => ({ data: { invoiceApprovalAbove: approval.above }, isSuccess: true }),
+}));
+vi.mock('@/features/finance/hooks/use-accounting-readiness', () => ({ useLedgerBlocked: () => false }));
 vi.mock('@/features/clients/components/client-form', () => ({
   ClientForm: ({ initialName }: { initialName?: string }) => <p>client form for {initialName}</p>,
 }));
@@ -40,6 +49,7 @@ vi.mock('@/features/clients/components/client-form', () => ({
 beforeEach(() => {
   mutateAsync.mockReset();
   push.mockReset();
+  approval.above = null;
 });
 
 async function fillLine(user: ReturnType<typeof userEvent.setup>, n: number, description: string, qty: string, rate: string) {
@@ -56,11 +66,13 @@ describe('ManualInvoiceForm (ADR-048)', () => {
     mutateAsync.mockResolvedValue({ id: 'inv-9' });
     renderWithProviders(<ManualInvoiceForm />);
 
-    await user.click(screen.getByRole('combobox', { name: /Client/ }));
+    await user.click(screen.getByRole('combobox', { name: /Bill to/ }));
     await user.click(await screen.findByRole('option', { name: /Hargeisa Water Agency/ }));
     await fillLine(user, 1, 'Excavator hire', '3', '450');
     await user.click(screen.getByRole('button', { name: 'Add line' }));
     await fillLine(user, 2, 'Surplus rebar', '2.5', '10.01');
+    await user.type(screen.getByLabelText('PO / reference'), ' PO-4471 ');
+    await user.type(screen.getByLabelText('Note to client'), 'Hire for site B.');
 
     // 1350 + 25.03 (25.025 rounds half-up) = 1375.03; 5% tax = 68.75.
     const totals = screen.getByText('Total due').closest('dl')!;
@@ -74,6 +86,8 @@ describe('ManualInvoiceForm (ADR-048)', () => {
         clientId: 'c1',
         currencyCode: 'USD',
         paymentTerms: 'Net 15',
+        clientReference: 'PO-4471',
+        notes: 'Hire for site B.',
         lines: [
           { description: 'Excavator hire', quantity: '3', unitPrice: '450', revenueAccountCode: '42100' },
           { description: 'Surplus rebar', quantity: '2.5', unitPrice: '10.01', revenueAccountCode: '42100' },
@@ -81,6 +95,31 @@ describe('ManualInvoiceForm (ADR-048)', () => {
       }),
     );
     expect(push).toHaveBeenCalledWith('/finance/accounting/invoices/inv-9');
+  });
+
+  it('CI-1/CI-6: bills in USD whatever the client’s default, takes the client’s terms, and Save and issue opens Issue', async () => {
+    const user = userEvent.setup();
+    mutateAsync.mockResolvedValue({ id: 'inv-10' });
+    renderWithProviders(<ManualInvoiceForm />);
+
+    expect(screen.queryByLabelText('Currency')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('combobox', { name: /Bill to/ }));
+    await user.click(await screen.findByRole('option', { name: /Berbera Port Authority/ }));
+    expect(screen.getByRole('radio', { name: 'Net 30' })).toHaveAttribute('aria-checked', 'true');
+    await fillLine(user, 1, 'Crane hire', '1', '100');
+
+    await user.click(screen.getByRole('button', { name: 'Save and issue' }));
+    expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({ clientId: 'c2', currencyCode: 'USD', paymentTerms: 'Net 30' }));
+    expect(push).toHaveBeenCalledWith('/finance/accounting/invoices/inv-10?issue=1');
+  });
+
+  it('offers only Save draft when the total needs a second person’s approval', async () => {
+    approval.above = '50.00';
+    const user = userEvent.setup();
+    renderWithProviders(<ManualInvoiceForm />);
+    await fillLine(user, 1, 'Crane hire', '1', '100');
+    expect(screen.queryByRole('button', { name: 'Save and issue' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save draft' })).toBeInTheDocument();
   });
 
   it('lists what is missing instead of saving', async () => {
@@ -98,7 +137,7 @@ describe('ManualInvoiceForm (ADR-048)', () => {
       new ApiError(400, 'x', 'MANUAL_INVOICE_INVALID', [], { problems: ['42100 is not an active income account that accepts postings.'] }),
     );
     renderWithProviders(<ManualInvoiceForm />);
-    await user.click(screen.getByRole('combobox', { name: /Client/ }));
+    await user.click(screen.getByRole('combobox', { name: /Bill to/ }));
     await user.click(await screen.findByRole('option', { name: /Hargeisa Water Agency/ }));
     await fillLine(user, 1, 'Hire', '1', '10');
     await user.click(screen.getByRole('button', { name: 'Save draft' }));

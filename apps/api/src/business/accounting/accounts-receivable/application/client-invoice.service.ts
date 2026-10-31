@@ -236,6 +236,15 @@ function toInvoiceWithSource<T extends Parameters<typeof resolveInvoiceSource>[0
   };
 }
 
+/** CI-3 — an invoice's settled amounts by kind, as money strings (absent = nothing settled). */
+function settlementFields(totals?: { paid: Decimal; credited: Decimal; writtenOff: Decimal }) {
+  return {
+    amountPaid: (totals?.paid ?? new Decimal(0)).toFixed(2),
+    amountCredited: (totals?.credited ?? new Decimal(0)).toFixed(2),
+    amountWrittenOff: (totals?.writtenOff ?? new Decimal(0)).toFixed(2),
+  };
+}
+
 export interface ApproveInvoiceDto {
   invoiceId: string;
 }
@@ -877,7 +886,8 @@ export class ClientInvoiceService {
     const orgId = identity.activeOrganizationId;
     const priced = priceManualLines(dto.lines);
     const problems = [...priced.problems];
-    if (!/^[A-Z]{3}$/.test(dto.currencyCode)) problems.push('Choose a three-letter currency code.');
+    // CI-1 — ADR-024 ACC-CUR-001: ACCO bills in US dollars only; another code would post at rate 1.
+    if (dto.currencyCode !== 'USD') problems.push('Invoices are raised in US dollars (USD) only.');
     if (dto.dueDate < dto.invoiceDate) problems.push('The due date cannot be before the invoice date.');
 
     const client = await this.repo.findClientForInvoice(prisma, orgId, dto.clientId);
@@ -909,6 +919,8 @@ export class ClientInvoiceService {
         taxCodeId: tax.taxCodeId,
         taxRate: tax.taxRate,
         paymentTerms: dto.paymentTerms,
+        clientReference: dto.clientReference?.trim() || null,
+        notes: dto.notes?.trim() || null,
         billingAddressSnapshot: {
           client: {
             name: client!.name,
@@ -1024,9 +1036,11 @@ export class ClientInvoiceService {
       org,
     });
     if (changed === 0) {
-      throw new BadRequestException(
-        `Invoice ${invoice.invoiceNumber ?? invoiceId} is already issued or cancelled; its branding is frozen.`,
-      );
+      // CI-2 — two Issue clicks race: the loser finds the draft already gone. Say so plainly.
+      throw new ConflictException({
+        errorCode: 'INVOICE_ALREADY_POSTED',
+        message: 'This invoice has just been issued or cancelled. Reload to see it.',
+      });
     }
   }
 
@@ -1276,8 +1290,9 @@ export class ClientInvoiceService {
 
       // The number is claimed before posting, in the same transaction, so the journal names the
       // invoice a reader knows (INV-000002) rather than its database id. A failed post rolls the
-      // claim back with it — no number is burnt.
-      const invNum = await this.sequenceRepo.claimNext(activeTx as never, orgId, 'CLIENT_INVOICE');
+      // claim back with it — no number is burnt. CI-8: a yearly / monthly / daily format numbers the
+      // invoice by its own invoice date (a December invoice issued in January is INV-2025-…).
+      const invNum = await this.sequenceRepo.claimNext(activeTx as never, orgId, 'CLIENT_INVOICE', undefined, invoice.invoiceDate);
 
       const postResult = await this.postingPort.post(
         {
@@ -1518,7 +1533,12 @@ export class ClientInvoiceService {
     // The list carries the same resolved `source` as the detail read — the web list renders it
     // on every row, and a row without it crashed the page.
     const invoices = await this.repo.findAll(prisma, identity.activeOrganizationId, filter);
-    return invoices.map(toInvoiceWithSource);
+    const settled = await this.repo.findSettlementTotals(
+      prisma,
+      identity.activeOrganizationId,
+      invoices.map((i) => i.id),
+    );
+    return invoices.map((i) => ({ ...toInvoiceWithSource(i), ...settlementFields(settled.get(i.id)) }));
   }
 
   async findById(identity: RequestIdentity, id: string) {
@@ -1535,7 +1555,26 @@ export class ClientInvoiceService {
           revenueAccountCode: l.revenueAccount.code,
         }))
       : [];
-    return { ...toInvoiceWithSource(invoice), lines };
+    const orgId = identity.activeOrganizationId;
+    const [settled, payments] = await Promise.all([
+      this.repo.findSettlementTotals(prisma, orgId, [id]),
+      this.repo.findPayments(prisma, orgId, id),
+    ]);
+    return {
+      ...toInvoiceWithSource(invoice),
+      ...settlementFields(settled.get(id)),
+      payments: payments.map((p) => ({
+        allocationId: p.id,
+        receiptId: p.receipt.id,
+        receiptNumber: p.receipt.receiptNumber,
+        receiptDate: p.receipt.receiptDate.toISOString().slice(0, 10),
+        appliedOn: p.allocationDate.toISOString().slice(0, 10),
+        paymentMethod: p.receipt.paymentMethod,
+        reference: p.receipt.reference,
+        amount: p.allocatedAmount.toFixed(2),
+      })),
+      lines,
+    };
   }
 
   /**
@@ -1641,6 +1680,8 @@ export class ClientInvoiceService {
       invoiceDate: invoice.invoiceDate,
       dueDate: invoice.dueDate,
       paymentTerms: invoice.paymentTerms,
+      clientReference: invoice.clientReference,
+      message: invoice.notes,
       currencyCode: invoice.currencyCode,
       subtotal: documentSubtotal.toFixed(2),
       vatAmount: invoice.vatAmount.toString(),

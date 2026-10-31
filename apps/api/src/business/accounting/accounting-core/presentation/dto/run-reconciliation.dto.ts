@@ -1,20 +1,13 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsArray, IsOptional, MaxLength } from 'class-validator';
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import { IsString, IsOptional, MaxLength } from 'class-validator';
 
+/** GL-L — the control accounts are found from the chart; a code names one instead. */
 export class RunReconciliationDto {
-  @ApiProperty({ example: 'AR-001' })
-  @IsString() @IsNotEmpty() @MaxLength(30)
-  arAccountCode!: string;
+  @ApiPropertyOptional({ example: '11000' })
+  @IsString() @IsOptional() @MaxLength(30)
+  arAccountCode?: string;
 
-  @ApiProperty({ example: 'AP-001' })
-  @IsString() @IsNotEmpty() @MaxLength(30)
-  apAccountCode!: string;
-
-  @ApiPropertyOptional({ type: [String], example: ['BNK-001'] })
-  @IsArray() @IsOptional()
-  bankAccountCodes?: string[];
-
-  @ApiPropertyOptional({ description: 'Scope reconciliation to a specific accounting period' })
-  @IsString() @IsOptional()
-  periodId?: string;
+  @ApiPropertyOptional({ example: '20000' })
+  @IsString() @IsOptional() @MaxLength(30)
+  apAccountCode?: string;
 }

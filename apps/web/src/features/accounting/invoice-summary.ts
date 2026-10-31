@@ -16,7 +16,10 @@ export interface InvoiceSummary {
   draft: { count: number; totalMinor: number };
   overdue: { count: number; outstandingMinor: number; oldestDaysLate: number };
   notDue: { count: number; outstandingMinor: number };
+  /** Cash received against live invoices (receipts applied), and how many are fully settled. */
   collected: { paidCount: number; collectedMinor: number };
+  /** What live invoices still owe: overdue plus not yet due. */
+  outstanding: { count: number; outstandingMinor: number };
   /** Retention the clients hold back on IPC invoices, less what release invoices have billed. */
   retentionHeld: { contracts: number; heldMinor: number };
   /** Live invoices dated in `today`'s calendar year, and their total. */
@@ -56,10 +59,20 @@ export function invoiceSummary(invoices: readonly ClientInvoice[], today: string
       oldestDaysLate: overdue.reduce((max, i) => Math.max(max, daysBetween(i.dueDate, today)), 0),
     },
     notDue: { count: notDue.length, outstandingMinor: sumMinorUnits(notDue.map((i) => i.outstandingAmount), SCALE) },
+    outstanding: {
+      count: overdue.length + notDue.length,
+      outstandingMinor: sumMinorUnits([...overdue, ...notDue].map((i) => i.outstandingAmount), SCALE),
+    },
     collected: {
       paidCount: live.filter((i) => toMinorUnits(i.outstandingAmount, SCALE) === 0).length,
+      // CI-3 — cash received only. Total less balance also counted credit notes and write-offs as
+      // collected. An API too old to send `amountPaid` falls back to that difference.
       collectedMinor: live.reduce(
-        (sum, i) => sum + toMinorUnits(i.totalAmount, SCALE) - toMinorUnits(i.outstandingAmount, SCALE),
+        (sum, i) =>
+          sum +
+          (i.amountPaid !== undefined
+            ? toMinorUnits(i.amountPaid, SCALE)
+            : toMinorUnits(i.totalAmount, SCALE) - toMinorUnits(i.outstandingAmount, SCALE)),
         0,
       ),
     },

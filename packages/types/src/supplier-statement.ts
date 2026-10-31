@@ -33,8 +33,29 @@ export interface SupplierStatementLine {
   balance: string;
 }
 
+/** SS-1 — a bill still owed today, with what has settled it so far. */
+export interface SupplierOpenBill {
+  billId: string;
+  /** Our bill number, or the supplier's invoice number before posting numbered it. */
+  number: string;
+  supplierInvoiceNumber: string;
+  billDate: string;
+  dueDate: string;
+  total: string;
+  /** Paid, credited by debit notes, or settled with buyer cash. */
+  settled: string;
+  /** Still owed (counting what unposted payments hold). */
+  balance: string;
+  daysOverdue: number;
+  opening: boolean;
+}
+
 export interface SupplierStatement {
-  supplier: { id: string; name: string; code: string };
+  supplier: { id: string; name: string; code: string; address?: string | null };
+  /** SS-2 — who the statement is from (the PDF header). */
+  organization?: { name: string } | null;
+  /** SS-1 — today's open bills, oldest due first. */
+  openBills: SupplierOpenBill[];
   from: string;
   to: string;
   /** What was owed at the start of `from`. */
@@ -115,4 +136,12 @@ export interface BankTransferView {
   approvedByName: string | null;
   rejectionReason: string | null;
   reversalReason: string | null;
+  /** TR — the posted journal and, once reversed, its mirror (to open them from the transfer). */
+  journalEntryId: string | null;
+  reversalJournalEntryId: string | null;
+  /** When it was asked for, and (posted) when it posted; (reversed) when and by whom. */
+  requestedAt: string;
+  postedAt: string | null;
+  reversedAt: string | null;
+  reversedByName: string | null;
 }

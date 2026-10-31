@@ -21,6 +21,8 @@ export const bankStatementsApi = {
     apiClient<BankStatementWorkspace>(`${BASE}/${encodeURIComponent(id)}/lines/${encodeURIComponent(lineId)}/unmatch`, { method: 'POST' }),
   post: (id: string, lineId: string, body: PostStatementLineRequest) =>
     apiClient<BankStatementWorkspace>(`${BASE}/${encodeURIComponent(id)}/lines/${encodeURIComponent(lineId)}/post`, { method: 'POST', body: JSON.stringify(body) }),
+  undo: (id: string, lineId: string) =>
+    apiClient<BankStatementWorkspace>(`${BASE}/${encodeURIComponent(id)}/lines/${encodeURIComponent(lineId)}/undo`, { method: 'POST' }),
   reconcile: (id: string) => apiClient<BankStatementWorkspace>(`${BASE}/${encodeURIComponent(id)}/reconcile`, { method: 'POST' }),
   remove: (id: string) => apiClient<{ removed: boolean }>(`${BASE}/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 };

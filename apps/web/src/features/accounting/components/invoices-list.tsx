@@ -5,10 +5,8 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import {
-  Avatar,
   Button,
   cn,
-  entityTintClass,
   StatusPill,
   DropdownMenu,
   DropdownMenuContent,
@@ -46,14 +44,21 @@ import { isInvoiceOverdue, todayWireDate } from '../invoice-overdue';
 import { daysLate, INVOICE_LIST_STATE_TONE, invoiceListState } from '../invoice-list-state';
 import { useProjects } from '@/features/projects/hooks/use-projects';
 import { toMinorUnits } from '@/lib/money';
-import type { ClientInvoice, InvoiceDocStatus, PostingStatus } from '../types';
+import type { ClientInvoice } from '../types';
 import type { SavedViewState } from '@erp/types';
 import { InvoiceSummaryTiles } from './invoice-summary-tiles';
 import { QuickAddInvoice, type QuickAddInvoiceHandle } from './quick-add-invoice';
 import { invoiceSummary } from '../invoice-summary';
+import { recordPaymentHref } from '../invoice-actions';
 
-const DOC_STATUSES: InvoiceDocStatus[] = ['DRAFT', 'APPROVED', 'CANCELLED'];
-const POSTING_STATUSES: PostingStatus[] = ['NOT_POSTED', 'PENDING', 'POSTED', 'REVERSED', 'FAILED'];
+/** The one Status filter: what the reader acts on, not the two internal status axes. */
+const STATE_FILTERS = ['DRAFT', 'UNPAID', 'OVERDUE', 'PAID', 'VOID'] as const;
+const UNPAID_STATES = new Set(['OPEN', 'PART_PAID', 'OVERDUE']);
+
+/** Whether the invoice owes money: issued, not cancelled or reversed. Drafts owe nothing yet. */
+const isLive = (inv: ClientInvoice) =>
+  inv.documentStatus !== 'CANCELLED' &&
+  (inv.postingStatus === 'POSTED' || inv.postingStatus === 'OPENING_BALANCE');
 
 const detailHref = (invoice: ClientInvoice) => `/finance/accounting/invoices/${invoice.id}`;
 
@@ -71,8 +76,15 @@ export function invoiceMatchesFilters(
   filters: FilterValues,
   today: string,
 ): boolean {
+  // `status` / `posting` are the two raw axes, kept so views saved before the Status filter still work.
   if (filters.status && inv.documentStatus !== filters.status) return false;
   if (filters.posting && inv.postingStatus !== filters.posting) return false;
+  if (filters.state) {
+    const state = invoiceListState(inv, today);
+    if (filters.state === 'UNPAID' && !UNPAID_STATES.has(state)) return false;
+    if (filters.state === 'VOID' && state !== 'CANCELLED' && state !== 'REVERSED') return false;
+    if (['DRAFT', 'OVERDUE', 'PAID'].includes(filters.state) && state !== filters.state) return false;
+  }
   if (filters.client && inv.clientId !== filters.client) return false;
   if (filters.due === 'overdue' && !isInvoiceOverdue(inv, today)) return false;
   if (filters.due === 'notOverdue' && isInvoiceOverdue(inv, today)) return false;
@@ -80,12 +92,9 @@ export function invoiceMatchesFilters(
 }
 
 /**
- * The client invoice list (ADR-035 list page, ADR-036 pilot).
- *
- * "New invoice" opens a source picker, not a blank form (ADR-037): there is no blank create
- * endpoint — an invoice is raised from a certified IPC, a billing milestone or a separate charge,
- * and its amount is copied from that source. The action is shown only to holders of
- * `manage:receivable`, which every create endpoint requires.
+ * The client invoice list (ADR-035 list page, ADR-036 pilot). "New invoice" opens one form that
+ * covers a hand-typed sale (ADR-048) and contract billing from a source (ADR-037). The action is
+ * shown only to holders of `manage:receivable`, which every create endpoint requires.
  */
 export function InvoicesList() {
   const t = useTranslations('accounting.invoices');
@@ -161,16 +170,10 @@ export function InvoicesList() {
 
   const filterFields: ListFilterField[] = [
     {
-      key: 'status',
+      key: 'state',
       type: 'select',
       label: t('filterByStatus'),
-      options: DOC_STATUSES.map((s) => ({ value: s, label: t(`docStatus.${s}`) })),
-    },
-    {
-      key: 'posting',
-      type: 'select',
-      label: t('filterByPostingStatus'),
-      options: POSTING_STATUSES.map((s) => ({ value: s, label: t(`postingStatus.${s}`) })),
+      options: STATE_FILTERS.map((s) => ({ value: s, label: t(`stateFilter.${s}`) })),
     },
     {
       key: 'due',
@@ -200,7 +203,8 @@ export function InvoicesList() {
       sticky: true,
       sortable: true,
       card: 'title',
-      plainValue: (inv) => `${inv.invoiceNumber ?? ''} ${sourceText(inv)}`,
+      // The client's PO / reference is searchable too: their accounts team quotes it when they call.
+      plainValue: (inv) => `${inv.invoiceNumber ?? ''} ${sourceText(inv)} ${inv.clientReference ?? ''}`,
       exportValue: (inv) => `${inv.invoiceNumber ?? t('unnumbered')} (${sourceText(inv)})`,
       // The invoice number is the row's one link (the grid wraps this cell); the source says
       // what was billed — a certificate, a milestone, a separate charge.
@@ -232,20 +236,13 @@ export function InvoicesList() {
         const name = clientNames.get(inv.clientId) ?? inv.clientId.slice(-8);
         const project = projectName(inv);
         return (
-          <span className="flex items-center gap-2.5">
-            <Avatar
-              name={name}
-              size="sm"
-              className={cn('rounded-control ring-0', entityTintClass(inv.clientId))}
-            />
-            <span className="min-w-0">
-              <span className="block max-w-[16rem] truncate font-medium">{name}</span>
-              {project ? (
-                <span className="block max-w-[16rem] truncate text-caption text-muted-foreground">
-                  {project}
-                </span>
-              ) : null}
-            </span>
+          <span className="block min-w-0">
+            <span className="block max-w-[16rem] truncate font-medium">{name}</span>
+            {project ? (
+              <span className="block max-w-[16rem] truncate text-caption text-muted-foreground">
+                {project}
+              </span>
+            ) : null}
           </span>
         );
       },
@@ -295,9 +292,10 @@ export function InvoicesList() {
       numeric: true,
       sortable: true,
       plainValue: (inv) => Number(inv.outstandingAmount),
-      // A cancelled or reversed invoice owes nothing, and a zero there would read as "paid".
+      // A draft owes nothing yet and a cancelled or reversed invoice nothing at all; a zero there
+      // would read as "paid".
       render: (inv) =>
-        inv.documentStatus === 'CANCELLED' || inv.postingStatus === 'REVERSED' ? (
+        !isLive(inv) ? (
           <MoneyDisplay value={null} />
         ) : (
           <span className="inline-flex items-center justify-end gap-2">
@@ -350,19 +348,24 @@ export function InvoicesList() {
   const builtInViews: Omit<BuiltInView, 'count'>[] = [
     { id: 'all', label: t('views.all'), state: { sort: DEFAULT_SORT } },
     {
-      id: 'overdue',
-      label: t('views.overdue'),
-      state: { filters: { due: 'overdue' }, sort: { key: 'dueDate', direction: 'asc' } },
-    },
-    {
       id: 'drafts',
       label: t('views.drafts'),
-      state: { filters: { status: 'DRAFT' }, sort: DEFAULT_SORT },
+      state: { filters: { state: 'DRAFT' }, sort: DEFAULT_SORT },
     },
     {
-      id: 'toPost',
-      label: t('views.toPost'),
-      state: { filters: { status: 'APPROVED', posting: 'NOT_POSTED' }, sort: DEFAULT_SORT },
+      id: 'unpaid',
+      label: t('views.unpaid'),
+      state: { filters: { state: 'UNPAID' }, sort: { key: 'dueDate', direction: 'asc' } },
+    },
+    {
+      id: 'overdue',
+      label: t('views.overdue'),
+      state: { filters: { state: 'OVERDUE' }, sort: { key: 'dueDate', direction: 'asc' } },
+    },
+    {
+      id: 'paid',
+      label: t('views.paid'),
+      state: { filters: { state: 'PAID' }, sort: DEFAULT_SORT },
     },
   ];
   // The summary follows the project filter (the API's) but not the other filters: it is the
@@ -396,6 +399,9 @@ export function InvoicesList() {
         }),
     });
 
+  const canRecordPayment = (invoice: ClientInvoice) =>
+    can(ACCOUNTING_PERMISSIONS.manageReceivables) && isLive(invoice) && toMinorUnits(invoice.outstandingAmount, 2) > 0;
+
   const copyLink = async (invoice: ClientInvoice) => {
     try {
       await navigator.clipboard.writeText(`${window.location.origin}${detailHref(invoice)}`);
@@ -420,7 +426,6 @@ export function InvoicesList() {
   return (
     <div className="space-y-5">
       <ListPageHeader
-        eyebrow={t('eyebrow')}
         title={t('pageTitle')}
         summary={headerSummary}
         actions={createAction ?? undefined}
@@ -452,6 +457,11 @@ export function InvoicesList() {
                   <DropdownMenuItem asChild>
                     <Link href={detailHref(invoice)}>{t('rowOpen')}</Link>
                   </DropdownMenuItem>
+                  {canRecordPayment(invoice) ? (
+                    <DropdownMenuItem asChild>
+                      <Link href={recordPaymentHref(invoice)}>{t('recordPayment')}</Link>
+                    </DropdownMenuItem>
+                  ) : null}
                   <DropdownMenuItem
                     onSelect={() =>
                       openDocument.mutate(invoice.id, {
@@ -527,17 +537,16 @@ export function InvoicesList() {
             ? undefined
             : {
                 label: (count) => t('countLabel', { count }),
+                // CI-4 — a cancelled or reversed invoice was never billed, and a draft is not owed:
+                // neither may count in the totals (they did, so the footer overstated both).
                 columns: {
-                  total: (rows) => sumMoney(rows, (inv) => inv.totalAmount, summary.currency),
-                  outstanding: (rows) =>
+                  total: (rows) =>
                     sumMoney(
-                      rows.filter(
-                        (inv) =>
-                          inv.documentStatus !== 'CANCELLED' && inv.postingStatus !== 'REVERSED',
-                      ),
-                      (inv) => inv.outstandingAmount,
+                      rows.filter((inv) => inv.documentStatus !== 'CANCELLED' && inv.postingStatus !== 'REVERSED'),
+                      (inv) => inv.totalAmount,
                       summary.currency,
                     ),
+                  outstanding: (rows) => sumMoney(rows.filter(isLive), (inv) => inv.outstandingAmount, summary.currency),
                 },
               }
         }
@@ -546,11 +555,11 @@ export function InvoicesList() {
           all.length > 0 ? (
             <InvoiceSummaryTiles
               summary={summary}
-              onShowDrafts={() => applyView(builtInViews[2]!.state)}
-              onShowOverdue={() => applyView(builtInViews[1]!.state)}
+              onShowDrafts={() => applyView(builtInViews[1]!.state)}
+              onShowOverdue={() => applyView(builtInViews[3]!.state)}
               onShowNotDue={() =>
                 applyView({
-                  filters: { status: 'APPROVED', posting: 'POSTED', due: 'notOverdue' },
+                  filters: { state: 'UNPAID', due: 'notOverdue' },
                   sort: { key: 'dueDate', direction: 'asc' },
                 })
               }
